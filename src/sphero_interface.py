@@ -12,21 +12,15 @@ from pysphero.device_api.sensor import CoreTime, Velocity, Accelerometer, Quater
 from std_msgs.msg import Float32
 from geometry_msgs.msg import Pose2D, PoseStamped # hijack the Pose2D message. x = timestep. theta = heading. y = velocity.
 import rospy
-# import roslibpy
-
-# def listener_callback(data):
-#     rospy.loginfo(rospy.get_caller_id() + "I heard %s", data.data)
-#     # return data.data
-#
-# def sphero_listener():
-#     rospy.init_node('listener', anonymous=True)
-#     rospy.Subscriber("chatter", String, callback)
-#     # spin() simply keeps python from exiting until this node is stopped
-#     rospy.spin()
-
-heartbeat_period = 0
 
 ACTIVE_SENSORS = [CoreTime, Velocity]
+heartbeat_period = 0
+# Sphero set
+spheros = {
+    # "d9:81:9e:b8:ad": None,
+    "f0:35:04:88:07:76": None,
+    "c9:b4:ef:32:eC:28": None,
+}
 
 '''
 Wrapped Sphero wraps the subscribers and publishers 
@@ -47,9 +41,12 @@ class WrappedSphero(Sphero):
         self.setup()
 
     def setup(self):
-        self.ble_adapter = self._ble_adapter_cls(self.mac_address)
-        rospy.sleep(0.05)
-        self.sensor.set_notify(self.sensor_bt_cb, *ACTIVE_SENSORS)
+        try:
+            self.ble_adapter = self._ble_adapter_cls(self.mac_address)
+            rospy.sleep(0.1)
+            self.sensor.set_notify(self.sensor_bt_cb, *ACTIVE_SENSORS) #) #
+        except:
+            print("WARN: Could not connect to "+self.name)
 
     def cmd_cb(self, pose2d):
         self.vector = pose2d
@@ -71,7 +68,6 @@ class WrappedSphero(Sphero):
         sensed_vector.pose.orientation.w = data.get(Quaternion.w)
         self.velocity_pub.publish(sensed_vector)
 
-
     def step(self):
         # cap inputs
         t, v, theta = self.vector.x, self.vector.y, self.vector.theta
@@ -79,30 +75,13 @@ class WrappedSphero(Sphero):
             print("forcing 0 velocity due to stale command.")
             self.vector = Pose2D()
 
-        print("(v,theta) : {} {}".format(v, theta))
+        print(self.name+"(v,theta) : {} {}".format(v, theta))
+        self.light_pub.publish(self.sensor.get_ambient_light_sensor_value())
+
         self.driving.drive_with_heading(int(v), int(theta), Direction.forward)
 
-    def pub(self, pub_type, data): #todo: pub_type should be an enum
-        if (pub_type == "light"):
-            self.light_pub.publish(data)
-
-def get_mac_address():
-    with toy_scanner(toy_type=Toy.sphero_bolt) as sphero:
-        print(f"Found {sphero.mac_address}")
-        # find toy: scan and get mac address from sphero bolt
-        # print("Found" + sphero.mac_address)
-        sphero.power.wake()
-        sleep(2)
-        sphero.power.enter_soft_sleep()
-
-
-# Sphero set
-spheros = {
-    "d9:81:9e:b8:ad:db":None,
-    }
-
 def main():
-    print("Starting sphero interface")
+    print("Starting sphero interface node")
     rospy.init_node("sphero_interface")
 
     '''
@@ -119,8 +98,10 @@ def main():
         for mac_address, sphero in spheros.items():
             if (heartbeat_period % 10 == 0):
                 pass
-            sphero.step()
-            sphero.pub("light", sphero.sensor.get_ambient_light_sensor_value())
+            try:
+                sphero.step()
+            except pysphero.exceptions.PySpheroTimeoutError:
+                print("Timeout "+sphero.name)
         rospy.sleep(0.01)
 
 

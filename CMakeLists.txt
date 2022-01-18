@@ -9,7 +9,6 @@ project(sphero_interface)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
-  pose_msgs
   rospy
   std_msgs
 )
