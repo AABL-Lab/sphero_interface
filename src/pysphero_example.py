@@ -38,7 +38,7 @@ def get_mac_address():
 
 def main():
     rospy.init_node("sphero_interface")
-    mac_address = "c9:b4:ef:32:ec:28"
+    mac_address = "D9:81:9E:B8:AD:DB"
 
     # client = roslibpy.Ros(host="localhost", port=9090)
     # client.run()
