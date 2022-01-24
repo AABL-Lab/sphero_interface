@@ -47,7 +47,7 @@ class WrappedSphero(Sphero):
 
     def setup(self):
             t0 = time()
-            while (not self.is_connected and time() - t0 < 2.): # Try for a little bit
+            while (not self.is_connected and time() - t0 < 2.): # Try to connect for a little bit
                 try:
                     self.ble_adapter = self._ble_adapter_cls(self.mac_address)
                     self.is_connected = True
@@ -59,6 +59,7 @@ class WrappedSphero(Sphero):
             if (self.is_connected):
                 self.power.wake()
                 self.user_io.set_led_matrix_text_scrolling(string=self.name, color=Color(red=0xff))
+                self.driving.reset_yaw()
             else:
                 print(f"WARN: {self.name} could not connect to bluetooth adapter: ", e)
                 traceback.print_exc()
