@@ -8,7 +8,7 @@ from pysphero.core import Sphero
 from pysphero.driving import Direction
 from pysphero.device_api.sensor import CoreTime, Accelerometer, Quaternion, Attitude, Gyroscope
 
-from sphero_interface.msg import HeadingStamped
+from sphero_interface.msg import HeadingStamped, ColorRequest
 from std_msgs.msg import Float32
 import rospy
 import traceback
@@ -17,8 +17,8 @@ ACTIVE_SENSORS = [CoreTime, Accelerometer, Quaternion, Attitude, Gyroscope]
 heartbeat_period = 0
 # Sphero set
 spheros = {
-    "D9:81:9E:B8:AD:DB": None,
-    # "f0:35:04:88:07:76": None,
+    # "D9:81:9E:B8:AD:DB": None,
+    "f0:35:04:88:07:76": None,
     # "c9:b4:ef:32:eC:28": None,
 }
 
@@ -37,6 +37,7 @@ class WrappedSphero(Sphero):
         self.cmd = HeadingStamped()
         
         self.cmd_sub = rospy.Subscriber(self.name+"/cmd", HeadingStamped, self.cmd_cb, queue_size=1)
+        self.color_sub = rospy.Subscriber(self.name+"/color_request", ColorRequest, self.color_cb, queue_size=1)
 
         self.prev_cmd_pub = rospy.Publisher(self.name+"/prev_cmd", HeadingStamped, queue_size=1)
         self.light_pub = rospy.Publisher(self.name+"/light", Float32, queue_size=1)
@@ -92,6 +93,10 @@ class WrappedSphero(Sphero):
         self.cmd.v = min(100, max(self.cmd.v, -100))
         self.cmd.theta = min(360, max(self.cmd.theta, 0)) # todo: correct for wrap
 
+    def color_cb(self, color_request):
+        rospy.loginfo("Setting color to "+str(color_request))
+        self.user_io.set_led_matrix_one_color(color=Color(red=int(hex(color_request.r)), green=int(hex(color_request.g)), blue=int(hex(color_request.b))))
+
     def sensor_bt_cb(self, data:dict):
         # print(data)
         for param in Accelerometer:
@@ -128,7 +133,7 @@ class WrappedSphero(Sphero):
 
 def main():
     print("Starting sphero interface node")
-    rospy.init_node("sphero_interface")
+    rospy.init_node("interface")
 
     '''
     This node has to maintain connections to all spheros and handle send and receive.
