@@ -10,7 +10,7 @@ from pysphero.utils import toy_scanner
 
 import random
 from pysphero.core import Sphero
-from pysphero.driving import Direction
+from pysphero.driving import Direction, StabilizationIndex
 
 from std_msgs.msg import Float32
 import rospy
@@ -63,7 +63,28 @@ def main():
             pub.publish(sphero.sensor.get_ambient_light_sensor_value())
 
         sphero.power.enter_soft_sleep()
+
+def pure_sphero():
+    mac_address = "D9:81:9E:B8:AD:DB"
+    with Sphero(mac_address=mac_address) as sphero:
+        print(f"Connected to {mac_address}")
+        sphero.power.wake()
+        sphero.user_io.set_all_leds_8_bit_mask(front_color=Color(blue=255), back_color=Color(red=255))
+        sphero.user_io.set_led_matrix_single_character(character='C', color=Color(red=255))
+        sphero.driving.set_stabilization(StabilizationIndex.no_control_system)
+        # sphero.user_io.set_led_matrix_one_color(color=Color(red=0xff))
+        # sphero.user_io.set_led_matrix_text_scrolling(string="CATCH", color=Color(red=0xff))
+        try:
+            while True:
+                sleep(0.05)
+        except KeyboardInterrupt:
+            pass
+
+        print("Sending sphero to sleep")
+        sphero.power.enter_soft_sleep()
+
  
 
 if __name__ == "__main__":
-    main()
+    # main()
+    pure_sphero()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 '''
-Placeholder Text
+This is a quick template for any ros node.
 @author james.staley625703@tufts.edu
 '''
 
