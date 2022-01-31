@@ -52,6 +52,7 @@ add_message_files(
   FILES
   HeadingStamped.msg
   ColorRequest.msg
+  SpheroNames.msg
 )
 
 ## Generate services in the 'srv' folder

@@ -16,9 +16,7 @@ import rospy
 from rospy import Subscriber
 from std_msgs.msg import Float32
 from geometry_msgs.msg import Pose2D
-from sphero_interface.msg import HeadingStamped
-
-import dwa_local_planner as dwa
+from sphero_interface.msg import HeadingStamped, SpheroNames
 
 SPEED = 30
 USE_DEAD_RECKONING = True
@@ -60,8 +58,8 @@ class Commander():
         self.dead_reckoning_pose = Pose2D()
         self.prev_cmd_time = None
 
-        self.pub = rospy.Publisher("sD9/cmd", HeadingStamped, queue_size=5)
-        self.tracker_sub = rospy.Subscriber("sD9/prev_cmd", HeadingStamped, self.tracker_cb, queue_size=20)
+        self.pub = rospy.Publisher(sphero_id+"/cmd", HeadingStamped, queue_size=5)
+        self.tracker_sub = rospy.Subscriber(sphero_id+"/prev_cmd", HeadingStamped, self.tracker_cb, queue_size=20)
 
     def is_complete(self):
         return self.path_complete
@@ -130,8 +128,29 @@ class Commander():
         # rospy.loginfo(f"Dead Reckoned Pose (x, y, theta): {self.dead_reckoning_pose.x:1.2f} {self.dead_reckoning_pose.y:1.2f} {self.dead_reckoning_pose.theta:1.2f}")
 
 
+all_commanders = []
+def sphero_names_cb(msg: SpheroNames):
+    '''
+    Callback for the sphero names message.
+    '''
+    for name in msg.data:
+        if any([name == c.sphero_id for c in all_commanders]): continue # we're tracking this one
+        rospy.loginfo("Creating commander for " + name)
+        all_commanders.append(Commander(name))
 
-def main():
+def main_group():
+    rospy.init_node("sphero_commander")
+    rospy.Subscriber("/sphero_names", SpheroNames, sphero_names_cb)
+    while not rospy.is_shutdown(): # do work
+        for commander in all_commanders:
+            commander.step()
+            if commander.is_complete():
+                for cmd, pose in zip(command_history, pose_history):
+                    print(f"{cmd.t:1.2f}s {cmd.v} {cmd.theta} -> {pose.x:1.2f} {pose.y:1.2f} {pose.theta:1.2f}")
+                break
+        rospy.sleep(0.1) # sleep for messages and interrupts
+
+def main_single_commander():
     rospy.init_node("sphero_commander")
     commander = Commander()
 
@@ -146,6 +165,6 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        main_group()
     except rospy.ROSInterruptException:
         pass

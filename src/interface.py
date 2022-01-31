@@ -8,18 +8,32 @@ from pysphero.core import Sphero
 from pysphero.driving import Direction
 from pysphero.device_api.sensor import CoreTime, Accelerometer, Quaternion, Attitude, Gyroscope
 
-from sphero_interface.msg import HeadingStamped, ColorRequest
-from std_msgs.msg import Float32
+from sphero_interface.msg import HeadingStamped, ColorRequest, SpheroNames
+from std_msgs.msg import Float32, String
 import rospy
 import traceback
+import random
 
 ACTIVE_SENSORS = [CoreTime, Accelerometer, Quaternion, Attitude, Gyroscope]
 heartbeat_period = 0
 # Sphero set
 spheros = {
     # "D9:81:9E:B8:AD:DB": None,
-    "f0:35:04:88:07:76": None,
-    # "c9:b4:ef:32:eC:28": None,
+    "E9:84:4B:AD:58:EF": None,
+    "F6:24:6F:6D:B1:2D": None,
+    "DC:6A:87:40:AA:AD": None,
+    "EC:73:F2:19:0E:CA": None,
+    "CA:64:39:FC:74:FB": None,
+    "FD:B5:2E:2B:2A:3C": None,
+    "FB:E7:20:44:74:E4": None,
+    "D7:98:82:CD:1F:EA": None,
+    "D1:FC:A0:92:D5:19": None,
+    "F8:48:B1:E1:1E:2D": None,
+    "C8:2E:9A:E9:37:16": None,
+    "D1:7E:07:ED:D1:37": None,
+    "CD:7D:FA:67:54:AB": None,
+    "F0:35:04:88:07:76": None,
+    "C9:B4:EF:32:EC:28": None,
 }
 
 SENSOR_READ = False
@@ -33,7 +47,7 @@ class WrappedSphero(Sphero):
     def __init__(self, mac_address: str):
         super().__init__(mac_address)
         self.name = "s"+mac_address[0:2]
-        
+
         self.cmd = HeadingStamped()
         
         self.cmd_sub = rospy.Subscriber(self.name+"/cmd", HeadingStamped, self.cmd_cb, queue_size=1)
@@ -47,27 +61,32 @@ class WrappedSphero(Sphero):
         self.setup()
 
     def setup(self):
-            t0 = time()
-            while (not self.is_connected and time() - t0 < 2.): # Try to connect for a little bit
-                try:
-                    self.ble_adapter = self._ble_adapter_cls(self.mac_address)
-                    self.is_connected = True
-                    rospy.loginfo(f"{self.name} connected.")
-                except Exception as e:
-                    traceback.print_exc()
-                    rospy.sleep(0.1)
-            
-            if (self.is_connected):
-                self.power.wake()
-                self.user_io.set_led_matrix_text_scrolling(string=self.name, color=Color(red=0xff))
-                self.driving.reset_yaw()
-            else:
-                print(f"WARN: {self.name} could not connect to bluetooth adapter: ", e)
-                traceback.print_exc()
-                self.is_connected = False
+        t0 = time()
+        while (not self.is_connected and time() - t0 < 1.): # Try to connect for a little bit (one second)
+            try:
+                self.ble_adapter = self._ble_adapter_cls(self.mac_address)
+                self.is_connected = True
+                rospy.loginfo(f"{self.name} connected.")
+            except Exception as e:
+                # traceback.print_exc()
+                rospy.loginfo(f"{self.name} failed to connect.")
+                rospy.sleep(0.1)
+        
+        if (self.is_connected):
+            self.power.wake()
+            # self.user_io.set_led_matrix_text_scrolling(string=self.name, color=Color(red=0xff))
+            rand = random.random()
+            color = Color(red=0xff, green=0x00, blue=0x00) if rand > 0.33 else Color(red=0x00, green=0xff, blue=0x00)
+            color = Color(red=0x00, green=0x00, blue=0xff) if rand > 0.67 else color
+            self.user_io.set_led_matrix_one_color(color=color)
+            self.driving.reset_yaw()
+        else:
+            print(f"WARN: {self.name} could not connect to bluetooth adapter: ", e)
+            traceback.print_exc()
+            self.is_connected = False
     
     def init_sensor_read(self):
-        if not (SENSOR_READ): return
+        if not (SENSOR_READ): return # don't care about sensors 
         try:
             # for sensor_type in ACTIVE_SENSORS:
             self.sensor.set_notify(self.sensor_bt_cb, *ACTIVE_SENSORS)
@@ -134,19 +153,26 @@ class WrappedSphero(Sphero):
 def main():
     print("Starting sphero interface node")
     rospy.init_node("interface")
+    connected_names_pub = rospy.Publisher("/sphero_names", SpheroNames, queue_size=1) # publish a list of the names of connected spheros
 
     '''
     This node has to maintain connections to all spheros and handle send and receive.
     '''
     # Wake up all the spheros 
     for ma in spheros.keys():
-        sphero = WrappedSphero(mac_address=ma)
-        spheros[ma] = sphero
+        rospy.loginfo("Waking up sphero "+ma)
+        try:
+            sphero = WrappedSphero(mac_address=ma.lower())
+            spheros[ma] = sphero
+        except Exception as e:
+            print(f"WARN: Could not connect to sphero {ma}: {e}")
 
     while not rospy.is_shutdown():
+        connected_sphero_names = []
         for mac_address, sphero in spheros.items():
-            if (heartbeat_period % 10 == 0):
-                pass
+            if not sphero: continue
+
+            connected_sphero_names.append(sphero.name)
             try:
                 if (sphero.is_connected):
                     sphero.step()
@@ -154,37 +180,13 @@ def main():
                     sphero.reconnect()
             except Exception as e:
                 traceback.print_exc()
-                print(f"{sphero.name} error: {e}")
+                print(f"{mac_address} error: {e}")
+            connected_names_pub.publish(SpheroNames(connected_sphero_names))
         rospy.sleep(0.01)
-
 
     # Close out the blueooth adapters
     for sphero in spheros.values():
         if sphero.ble_adapter: sphero.ble_adapter.close()
-
-    # client = roslibpy.Ros(host="localhost", port=9090)
-    # client.run()
-    # talker = roslibpy.Topic(client, '/ambient_light', 'std_msgs/Float32')
-
-    # pub = rospy.Publisher("blah/test", Float32)
-
-    # with Sphero(mac_address=mac_address) as sphero:
-    #     sphero.power.wake()
-    #     # sphero.user_io.set_all_leds_8_bit_mask(back_color=Color(red=0xff))
-    #     # sphero.user_io.set_led_matrix_one_color(color=Color(red=0xff))
-    #     sphero.user_io.set_led_matrix_text_scrolling(string="CATCH", color=Color(red=0xff))
-    #     for _ in range(10):
-    #         speed = random.randint(50, 100)
-    #         heading = random.randint(0, 360)
-    #         print(f"Send drive with speed {speed} and heading {heading}")
-    #         sphero.driving.drive_with_heading(speed, heading, Direction.forward)
-            
-    #         print("Ambient light sensor value:" + str(sphero.sensor.get_ambient_light_sensor_value()))
-    #         # talker.publish(roslibpy.Message({'data':sphero.sensor.get_ambient_light_sensor_value()}))
-    #         pub.publish(sphero.sensor.get_ambient_light_sensor_value())
-
-    #     sphero.power.enter_soft_sleep()
- 
 
 if __name__ == "__main__":
     try:
