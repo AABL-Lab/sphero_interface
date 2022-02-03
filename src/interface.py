@@ -5,7 +5,7 @@ from pysphero.device_api.user_io import Color
 
 import random
 from pysphero.core import Sphero
-from pysphero.driving import Direction
+from pysphero.driving import Direction, StabilizationIndex
 from pysphero.device_api.sensor import CoreTime, Accelerometer, Quaternion, Attitude, Gyroscope
 
 from sphero_interface.msg import HeadingStamped, ColorRequest, SpheroNames
@@ -18,26 +18,28 @@ ACTIVE_SENSORS = [CoreTime, Accelerometer, Quaternion, Attitude, Gyroscope]
 heartbeat_period = 0
 # Sphero set
 spheros = {
-    # "D9:81:9E:B8:AD:DB": None,
-    "E9:84:4B:AD:58:EF": None,
-    "F6:24:6F:6D:B1:2D": None,
-    "DC:6A:87:40:AA:AD": None,
-    "EC:73:F2:19:0E:CA": None,
-    "CA:64:39:FC:74:FB": None,
-    "FD:B5:2E:2B:2A:3C": None,
-    "FB:E7:20:44:74:E4": None,
-    "D7:98:82:CD:1F:EA": None,
-    "D1:FC:A0:92:D5:19": None,
+    "D9:81:9E:B8:AD:DB": None,
+    # "E9:84:4B:AD:58:EF": None,
+    # "F6:24:6F:6D:B1:2D": None,
+    # "DC:6A:87:40:AA:AD": None,
+    # "EC:73:F2:19:0E:CA": None,
+    # "CA:64:39:FC:74:FB": None,
+    # "FD:B5:2E:2B:2A:3C": None,
+    # "FB:E7:20:44:74:E4": None,
+    # "D7:98:82:CD:1F:EA": None,
+    # "D1:FC:A0:92:D5:19": None,
     "F8:48:B1:E1:1E:2D": None,
-    "C8:2E:9A:E9:37:16": None,
-    "D1:7E:07:ED:D1:37": None,
-    "CD:7D:FA:67:54:AB": None,
-    "F0:35:04:88:07:76": None,
-    "C9:B4:EF:32:EC:28": None,
+    # "C8:2E:9A:E9:37:16": None,
+    # "D1:7E:07:ED:D1:37": None,
+    # "CD:7D:FA:67:54:AB": None,
+    # "F0:35:04:88:07:76": None,
+    # "C9:B4:EF:32:EC:28": None,
 }
 
 SENSOR_READ = False
+STABILIZE_SPHEROS = False
 
+from TrackerParams import Sphero_RGB_Color
 '''
 Wrapped Sphero wraps the subscribers and publishers for one sphero.
 Also publishes the last issued command for state tracking.
@@ -74,12 +76,16 @@ class WrappedSphero(Sphero):
         
         if (self.is_connected):
             self.power.wake()
+            if not STABILIZE_SPHEROS: 
+                # This is silently broken, not sure why TODO
+                rospy.loginfo("Disabling sphero control system.")
+                self.driving.set_stabilization(StabilizationIndex.no_control_system)
+
             # self.user_io.set_led_matrix_text_scrolling(string=self.name, color=Color(red=0xff))
-            rand = random.random()
-            color = Color(red=0xff, green=0x00, blue=0x00) if rand > 0.33 else Color(red=0x00, green=0xff, blue=0x00)
-            color = Color(red=0x00, green=0x00, blue=0xff) if rand > 0.67 else color
-            self.user_io.set_led_matrix_one_color(color=color)
-            self.driving.reset_yaw()
+            r,g,b = Sphero_RGB_Color[self.name]
+            self.user_io.set_led_matrix_one_color(color=Color(red=r, green=g, blue=b))
+            self.user_io.set_all_leds_8_bit_mask(front_color=Color(), back_color=Color())
+            # self.driving.reset_yaw()
         else:
             print(f"WARN: {self.name} could not connect to bluetooth adapter: ", e)
             traceback.print_exc()
@@ -167,11 +173,11 @@ def main():
         except Exception as e:
             print(f"WARN: Could not connect to sphero {ma}: {e}")
 
+
     while not rospy.is_shutdown():
         connected_sphero_names = []
         for mac_address, sphero in spheros.items():
             if not sphero: continue
-
             connected_sphero_names.append(sphero.name)
             try:
                 if (sphero.is_connected):

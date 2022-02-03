@@ -70,9 +70,9 @@ def pure_sphero():
         print(f"Connected to {mac_address}")
         sphero.power.wake()
         sphero.user_io.set_all_leds_8_bit_mask(front_color=Color(blue=255), back_color=Color(red=255))
-        sphero.user_io.set_led_matrix_single_character(character='C', color=Color(red=255))
+        # sphero.user_io.set_led_matrix_single_character(character='C', color=Color(red=255))
         sphero.driving.set_stabilization(StabilizationIndex.no_control_system)
-        # sphero.user_io.set_led_matrix_one_color(color=Color(red=0xff))
+        sphero.user_io.set_led_matrix_one_color(color=Color(red=0xff))
         # sphero.user_io.set_led_matrix_text_scrolling(string="CATCH", color=Color(red=0xff))
         try:
             while True:

@@ -138,6 +138,9 @@ def sphero_names_cb(msg: SpheroNames):
         rospy.loginfo("Creating commander for " + name)
         all_commanders.append(Commander(name))
 
+'''
+Run a group of commanders that creates one sphero for each name on the topic
+'''
 def main_group():
     rospy.init_node("sphero_commander")
     rospy.Subscriber("/sphero_names", SpheroNames, sphero_names_cb)
@@ -150,6 +153,9 @@ def main_group():
                 break
         rospy.sleep(0.1) # sleep for messages and interrupts
 
+'''
+Run the single commander to control on sphero.
+'''
 def main_single_commander():
     rospy.init_node("sphero_commander")
     commander = Commander()
@@ -165,6 +171,7 @@ def main_single_commander():
 
 if __name__ == "__main__":
     try:
+    # main_single_commander():
         main_group()
     except rospy.ROSInterruptException:
         pass
