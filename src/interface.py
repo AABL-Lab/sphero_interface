@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 from time import sleep, time
 import os
-from pysphero.device_api.user_io import Color
-
 import random
+from pysphero.device_api.user_io import Color
 from pysphero.core import Sphero
 from pysphero.driving import Direction, StabilizationIndex
 from pysphero.device_api.sensor import CoreTime, Accelerometer, Quaternion, Attitude, Gyroscope
 
 from sphero_interface.msg import HeadingStamped, ColorRequest, SpheroNames
 from std_msgs.msg import Float32, String
+from sensor_msgs.msg import Imu
+from geometry_msgs.msg import Quaternion as RosQuaternion
+
 import rospy
 import traceback
 import random
 
-ACTIVE_SENSORS = [CoreTime, Accelerometer, Quaternion, Attitude, Gyroscope]
+# from IPython import embed
+
+ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
 heartbeat_period = 0
 # Sphero set
 spheros = {
-    "D9:81:9E:B8:AD:DB": None,
+    # "D9:81:9E:B8:AD:DB": None,
     # "E9:84:4B:AD:58:EF": None,
     # "F6:24:6F:6D:B1:2D": None,
     # "DC:6A:87:40:AA:AD": None,
@@ -36,7 +40,7 @@ spheros = {
     # "C9:B4:EF:32:EC:28": None,
 }
 
-SENSOR_READ = False
+SENSOR_READ = True
 STABILIZE_SPHEROS = False
 
 from TrackerParams import Sphero_RGB_Color
@@ -57,13 +61,14 @@ class WrappedSphero(Sphero):
 
         self.prev_cmd_pub = rospy.Publisher(self.name+"/prev_cmd", HeadingStamped, queue_size=1)
         self.light_pub = rospy.Publisher(self.name+"/light", Float32, queue_size=1)
+        self.ekf_orientation_pub = rospy.Publisher("/imu_data", Imu, queue_size=1) # publish for the ekf node
         
-        self.sensors_setup = False
-        self.is_connected = False # TODO: This should be calling a ble_adapter method to check
         self.setup()
 
     def setup(self):
         t0 = time()
+        self.sensors_setup = False
+        self.is_connected = False # TODO: This should be calling a ble_adapter method to check
         while (not self.is_connected and time() - t0 < 1.): # Try to connect for a little bit (one second)
             try:
                 self.ble_adapter = self._ble_adapter_cls(self.mac_address)
@@ -123,24 +128,26 @@ class WrappedSphero(Sphero):
         self.user_io.set_led_matrix_one_color(color=Color(red=int(hex(color_request.r)), green=int(hex(color_request.g)), blue=int(hex(color_request.b))))
 
     def sensor_bt_cb(self, data:dict):
-        # print(data)
-        for param in Accelerometer:
-            if param in data:
-                print(f"{param} : {data.get(param):1.2f}")
+        #NOTE: Example of what the data structures look like. For more info see the pysphero package.
+        # for param in Gyroscope:
+        #     if param in data:
+        #         print(f"{param} : {data.get(param):1.2f}")
         
-        for param in Attitude:
-            if param in data:
-                print(f"{param} : {data.get(param):1.2f}")
+        # Convert quaternion to IMU
+        orientation = RosQuaternion()
+        orientation.x = data.get(Quaternion.x)
+        orientation.y = data.get(Quaternion.y)
+        orientation.z = data.get(Quaternion.z)
+        orientation.w = data.get(Quaternion.w) 
         
-        for param in Gyroscope:
-            if param in data:
-                print(f"{param} : {data.get(param):1.2f}")
-        
-        for param in Quaternion:
-            if param in data:
-                print(f"{param} : {data.get(param):1.2f}")
+        imu = Imu()
+        imu.header.stamp = rospy.Time.now() # NOTE: This maybe should be CoreTime
+        imu.header.frame_id = "base_footprint" # NOTE: this measurement is in the sphero's frame. Need to make it relative to starting orientation to use here
+        imu.orientation = orientation
+        imu.orientation_covariance = [1e-6, 0, 0, 0, 1e-6, 0, 0, 0, 1e-6]
+        self.ekf_orientation_pub.publish(imu)
 
-        print("=" * 60)
+
 
     def step(self):
         if not self.sensors_setup: self.init_sensor_read()
@@ -172,6 +179,7 @@ def main():
             spheros[ma] = sphero
         except Exception as e:
             print(f"WARN: Could not connect to sphero {ma}: {e}")
+            traceback.print_exc()
 
 
     while not rospy.is_shutdown():

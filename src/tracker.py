@@ -207,6 +207,7 @@ def main():
             cv2.imshow("tracked", efk_frame)
 
         # >>>> convert image coordinates to scene coordinates
+        # TODO: Connect to each individual sphero's ekf node (if resources allow)
         pose_img = detectors_dict["sf8"].last_detected_color_pose
         if pose_img is not None:
             x,y = img_to_world(pose_img)
