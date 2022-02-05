@@ -23,16 +23,16 @@ heartbeat_period = 0
 # Sphero set
 spheros = {
     # "D9:81:9E:B8:AD:DB": None,
-    # "E9:84:4B:AD:58:EF": None,
-    # "F6:24:6F:6D:B1:2D": None,
+    # "F8:48:B1:E1:1E:2D": None,
+    "E9:84:4B:AD:58:EF": None,
+    "F6:24:6F:6D:B1:2D": None,
     # "DC:6A:87:40:AA:AD": None,
-    # "EC:73:F2:19:0E:CA": None,
-    # "CA:64:39:FC:74:FB": None,
+    "EC:73:F2:19:0E:CA": None,
+    "CA:64:39:FC:74:FB": None,
     # "FD:B5:2E:2B:2A:3C": None,
     # "FB:E7:20:44:74:E4": None,
     # "D7:98:82:CD:1F:EA": None,
     # "D1:FC:A0:92:D5:19": None,
-    "F8:48:B1:E1:1E:2D": None,
     # "C8:2E:9A:E9:37:16": None,
     # "D1:7E:07:ED:D1:37": None,
     # "CD:7D:FA:67:54:AB": None,
@@ -43,7 +43,7 @@ spheros = {
 SENSOR_READ = True
 STABILIZE_SPHEROS = False
 
-from TrackerParams import Sphero_RGB_Color
+from TrackerParams import GREEN_RGB, Sphero_RGB_Color
 '''
 Wrapped Sphero wraps the subscribers and publishers for one sphero.
 Also publishes the last issued command for state tracking.
@@ -89,7 +89,8 @@ class WrappedSphero(Sphero):
             # self.user_io.set_led_matrix_text_scrolling(string=self.name, color=Color(red=0xff))
             r,g,b = Sphero_RGB_Color[self.name]
             self.user_io.set_led_matrix_one_color(color=Color(red=r, green=g, blue=b))
-            self.user_io.set_all_leds_8_bit_mask(front_color=Color(), back_color=Color())
+            rospy.sleep(0.05)
+            self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=180), back_color=Color())
             # self.driving.reset_yaw()
         else:
             print(f"WARN: {self.name} could not connect to bluetooth adapter: ", e)
@@ -147,8 +148,6 @@ class WrappedSphero(Sphero):
         imu.orientation_covariance = [1e-6, 0, 0, 0, 1e-6, 0, 0, 0, 1e-6]
         self.ekf_orientation_pub.publish(imu)
 
-
-
     def step(self):
         if not self.sensors_setup: self.init_sensor_read()
 
@@ -195,7 +194,7 @@ def main():
             except Exception as e:
                 traceback.print_exc()
                 print(f"{mac_address} error: {e}")
-            connected_names_pub.publish(SpheroNames(connected_sphero_names))
+        connected_names_pub.publish(SpheroNames(connected_sphero_names))
         rospy.sleep(0.01)
 
     # Close out the blueooth adapters

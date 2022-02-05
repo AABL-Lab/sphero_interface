@@ -5,8 +5,9 @@ opencv code by
 Email: siddharthchandragzb@gmail.com
 '''
 
-from re import I
+from math import atan2, degrees
 import traceback
+
 import rospy
 from std_msgs.msg import Float32
 from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped, PoseWithCovariance, TwistWithCovariance, Pose, Twist, Point, Quaternion
@@ -23,7 +24,7 @@ from sensor_msgs.msg import Imu
 '''
 Dictionary of Sphero Names (keys) and their corresponding colors (values)
 '''
-from TrackerParams import Sphero_Params_by_ID, TrackerParams
+from TrackerParams import LOWER_GREEN, UPPER_GREEN, Sphero_Params_by_ID, TrackerParams
 
 EXPECTED_SPHERO_RADIUS = 46 # size of spheros in pixels
 circle_radiuses = dict()
@@ -69,17 +70,18 @@ class VisionDetect:
         # print(circle_radiuses)
         return gray_blurred
 
-    def processColor(self, hsv_img):
+    def processColor(self, hsv_img, lower=None, upper=None):
         '''
-        Produce a mask of a large circle around any the spheros color range. Store result.
+        Produce a mask of a large circle around any the spheros color range. Store result.        
         Returns: The mask or None if colors aren't detected
         '''
         global hsv
         hsv = hsv_img.copy()
-        # lower_blue = np.array([150,20,245])
-        # upper_blue = np.array([255,80,255])
-        lower = self.tracker_params.hsv_lower
-        upper = self.tracker_params.hsv_upper
+
+        if (lower is None) or (upper is None):
+            lower = self.tracker_params.hsv_lower
+            upper = self.tracker_params.hsv_upper
+
         mask = cv2.inRange(hsv, lower, upper)
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -101,7 +103,7 @@ class VisionDetect:
             self.last_detected_color_pose = center
             self.last_detected_color_ts = rospy.get_time()
 
-        return mask
+        return mask, center
 
         #cv2.imshow('mask',mask)
         # res = cv2.bitwise_and(img, img, mask=mask)
@@ -168,6 +170,10 @@ def main():
         return 
         # <<<< Open Video Stream
     while not rospy.is_shutdown(): # do work
+        if len(detectors_dict.keys()) == 0:
+            rospy.sleep(0.1)
+            continue
+
         # Read first frame.
         ok, frame = video.read()
         if not ok:
@@ -176,13 +182,25 @@ def main():
 
         # >>>> Filter for all the spheros colors
         hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        masks = [I.processColor(hsv_frame) for I in detectors_dict.values()]
+        masks = []
+        for idx, I in enumerate(detectors_dict.values()):
+            mask, center = I.processColor(hsv_frame)
+            masks.append(mask)
+            # grab the green from this circle
+            if (center is not None):
+                orientation_frame = cv2.bitwise_and(hsv_frame, hsv_frame, mask=mask)
+                green_mask, green_center = I_generic.processColor(orientation_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
+                if (green_center is not None):
+                    theta = degrees(atan2(green_center[1] - center[1], green_center[0] - center[0]))
+                    print(f"{I.sphero_id} theta: {theta:1.2f}")
+                    cv2.line(frame, center, green_center, (0,255,0), 2)
+
+
         color_mask = None
         for mask in masks:
             if (color_mask is None): color_mask = mask
             else:
                 color_mask = cv2.bitwise_or(color_mask, mask)
-
 
         # expandedBlue = I.getBluePreprocessed(frame)
         # print(f"ORd {len(masks)} masks")
@@ -208,7 +226,7 @@ def main():
 
         # >>>> convert image coordinates to scene coordinates
         # TODO: Connect to each individual sphero's ekf node (if resources allow)
-        pose_img = detectors_dict["sf8"].last_detected_color_pose
+        pose_img = detectors_dict["se9"].last_detected_color_pose
         if pose_img is not None:
             x,y = img_to_world(pose_img)
             odom_msg = Odometry()
@@ -223,7 +241,7 @@ def main():
             odom_msg.twist = tw
             # print(odom_msg)
             odom_pub.publish(odom_msg)
-            detectors_dict["sf8"].last_detected_color_pose = None
+            detectors_dict["se9"].last_detected_color_pose = None
         # <<<< convert image coordinates to scene coordinates
 
         # Exit if ESC pressed
