@@ -26,6 +26,8 @@ Dictionary of Sphero Names (keys) and their corresponding colors (values)
 '''
 from TrackerParams import LOWER_GREEN, UPPER_GREEN, Sphero_Params_by_ID, TrackerParams
 
+SHOW_IMAGES = True
+
 EXPECTED_SPHERO_RADIUS = 46 # size of spheros in pixels
 circle_radiuses = dict()
 hsv = None
@@ -42,6 +44,7 @@ class VisionDetect:
         self.last_detected_color_pose = None
 
         self.odom_pub = rospy.Publisher(f"/{self.sphero_id}/odom", Odometry, queue_size=10)
+        self.ekf_odom_sub = rospy.Subscriber(f"/{self.sphero_id}_ekf/odom_combined", PoseWithCovarianceStamped, ekf_cb, callback_args=self.sphero_id)
 
     def read_image(self, image):
         self.image = image
@@ -136,10 +139,9 @@ def mouse_cb(event, x, y, flags, params):
         V = imgk[y, x, 2]
         print(f'({x},{y})-  (h,s,v) {H}, {S}, {V}')
 
-ekf_pose2d = None
-def ekf_cb(data):
-    global ekf_pose2d
-    ekf_pose2d = data.pose.pose.position.x, data.pose.pose.position.y
+ekf_pose2d = dict()
+def ekf_cb(data, sphero_id):
+    ekf_pose2d[sphero_id] = (data.pose.pose.position.x, data.pose.pose.position.y)
 
 
 detectors_dict = dict()
@@ -152,15 +154,15 @@ def sphero_names_cb(msg):
 def main():
     rospy.init_node("tracker")
     rospy.Subscriber("/sphero_names", SpheroNames, sphero_names_cb)
-    rospy.Subscriber("/robot_pose_ekf/odom_combined", PoseWithCovarianceStamped, ekf_cb)
-
     I_generic = VisionDetect()
-    cv2.namedWindow('image', cv2.WINDOW_NORMAL)
-    cv2.namedWindow('color', cv2.WINDOW_NORMAL)
-    cv2.namedWindow('circles', cv2.WINDOW_NORMAL)
-    cv2.moveWindow('image', 0, 0)
-    cv2.moveWindow('color', 750, 0)
-    cv2.moveWindow('circles', 1500, 0)
+
+    if (SHOW_IMAGES):
+        cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+        cv2.namedWindow('color', cv2.WINDOW_NORMAL)
+        cv2.namedWindow('circles', cv2.WINDOW_NORMAL)
+        cv2.moveWindow('image', 0, 0)
+        cv2.moveWindow('color', 750, 0)
+        cv2.moveWindow('circles', 1500, 0)
 
     # >>>> Open Video Stream
     video = cv2.VideoCapture(-1) # for using CAM
@@ -168,7 +170,8 @@ def main():
     if not video.isOpened():
         print("Could not open video")
         return 
-        # <<<< Open Video Stream
+    # <<<< Open Video Stream
+
     while not rospy.is_shutdown(): # do work
         if len(detectors_dict.keys()) == 0:
             rospy.sleep(0.1)
@@ -214,14 +217,17 @@ def main():
         # <<<<< Detect Circles and add to position estimate
 
         # cv2.imshow("circles", circle)
-        cv2.imshow("image", frame)
-        cv2.imshow("color", color_frame)
-        cv2.setMouseCallback('image', mouse_cb)
+        if (SHOW_IMAGES):
+            cv2.imshow("image", frame)
+            cv2.imshow("color", color_frame)
+            cv2.setMouseCallback('image', mouse_cb)
 
-        if (ekf_pose2d is not None):
-            x, y = ekf_pose2d
+        if (SHOW_IMAGES and ekf_pose2d):
             efk_frame = frame.copy()
-            cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
+            for sphero_id, (x,y) in ekf_pose2d.items():
+                rospy.loginfo(f"{sphero_id} {x:1.2f}, {y:1.2f}")
+                if (x > 0 and y > 0):
+                    cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
             cv2.imshow("tracked", efk_frame)
 
         # >>>> convert image coordinates to scene coordinates
@@ -245,7 +251,7 @@ def main():
         # <<<< convert image coordinates to scene coordinates
 
         # Exit if ESC pressed
-        if cv2.waitKey(1) & 0xFF == ord('q'): # if press SPACE bar
+        if SHOW_IMAGES and cv2.waitKey(1) & 0xFF == ord('q'): # if press SPACE bar
             rospy.signal_shutdown("Quit")
             break
 

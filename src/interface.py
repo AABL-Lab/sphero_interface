@@ -196,11 +196,11 @@ def main():
                 traceback.print_exc()
                 print(f"{mac_address} error: {e}")
         connected_names_pub.publish(SpheroNames(connected_sphero_names))
-        rospy.sleep(0.01)
+        rospy.sleep(0.05)
 
     # Close out the blueooth adapters
     for sphero in spheros.values():
-        if sphero.ble_adapter: sphero.ble_adapter.close()
+        if sphero and sphero.ble_adapter: sphero.ble_adapter.close()
 
 if __name__ == "__main__":
     try:
