@@ -41,6 +41,8 @@ class VisionDetect:
         self.last_detected_color_ts = 0.
         self.last_detected_color_pose = None
 
+        self.odom_pub = rospy.Publisher(f"/{self.sphero_id}/odom", Odometry, queue_size=10)
+
     def read_image(self, image):
         self.image = image
         self.grayimage = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
@@ -152,8 +154,6 @@ def main():
     rospy.Subscriber("/sphero_names", SpheroNames, sphero_names_cb)
     rospy.Subscriber("/robot_pose_ekf/odom_combined", PoseWithCovarianceStamped, ekf_cb)
 
-    odom_pub = rospy.Publisher("/pr2_base_odometry/odom", Odometry, queue_size=1)
-
     I_generic = VisionDetect()
     cv2.namedWindow('image', cv2.WINDOW_NORMAL)
     cv2.namedWindow('color', cv2.WINDOW_NORMAL)
@@ -226,22 +226,22 @@ def main():
 
         # >>>> convert image coordinates to scene coordinates
         # TODO: Connect to each individual sphero's ekf node (if resources allow)
-        pose_img = detectors_dict["se9"].last_detected_color_pose
-        if pose_img is not None:
-            x,y = img_to_world(pose_img)
-            odom_msg = Odometry()
-            odom_msg.header.stamp = rospy.Time.now()
-            odom_msg.header.frame_id = "odom"
-            p = PoseWithCovariance()
-            p.pose.position = Point(x,y,0)
-            p.pose.orientation = Quaternion(0,0,0,1)
-            p.covariance = np.identity(6).flatten() # TODO
-            tw = TwistWithCovariance() # TODO
-            odom_msg.pose = p
-            odom_msg.twist = tw
-            # print(odom_msg)
-            odom_pub.publish(odom_msg)
-            detectors_dict["se9"].last_detected_color_pose = None
+        for I in detectors_dict.values():
+            pose_img = I.last_detected_color_pose
+            if pose_img is not None:
+                x,y = img_to_world(pose_img)
+                odom_msg = Odometry()
+                odom_msg.header.stamp = rospy.Time.now()
+                odom_msg.header.frame_id = "odom"
+                p = PoseWithCovariance()
+                p.pose.position = Point(x,y,0)
+                p.pose.orientation = Quaternion(0,0,0,1)
+                p.covariance = np.identity(6).flatten() # TODO
+                tw = TwistWithCovariance() # TODO
+                odom_msg.pose = p
+                odom_msg.twist = tw
+                I.odom_pub.publish(odom_msg)
+                I.last_detected_color_pose = None
         # <<<< convert image coordinates to scene coordinates
 
         # Exit if ESC pressed
