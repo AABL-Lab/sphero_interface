@@ -16,11 +16,7 @@ import rospy
 import traceback
 import random
 
-# from IPython import embed
-
-ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
-heartbeat_period = 0
-# Sphero set
+IN_LAB = False # I have spheros in my house. So this is for that. 
 spheros = {
     # "D9:81:9E:B8:AD:DB": None,
     # "F8:48:B1:E1:1E:2D": None,
@@ -38,7 +34,12 @@ spheros = {
     # "CD:7D:FA:67:54:AB": None,
     # "F0:35:04:88:07:76": None,
     # "C9:B4:EF:32:EC:28": None,
+} if IN_LAB else {
+    "D9:81:9E:B8:AD:DB": None,
+    "F8:48:B1:E1:1E:2D": None,
 }
+
+ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
 
 SENSOR_READ = True
 STABILIZE_SPHEROS = False
@@ -61,7 +62,7 @@ class WrappedSphero(Sphero):
 
         self.prev_cmd_pub = rospy.Publisher(self.name+"/prev_cmd", HeadingStamped, queue_size=1)
         self.light_pub = rospy.Publisher(self.name+"/light", Float32, queue_size=1)
-        self.ekf_orientation_pub = rospy.Publisher("/imu_data", Imu, queue_size=1) # publish for the ekf node
+        self.ekf_orientation_pub = rospy.Publisher(self.name+"/imu_data", Imu, queue_size=1) # publish for the ekf node
         
         self.setup()
 
