@@ -1,30 +1,36 @@
 #!/usr/bin/env python3
 from time import sleep, time
+import math
 import os
 import random
-from pysphero.device_api.user_io import Color
+from pysphero.device_api.user_io import Color, Pixel
 from pysphero.core import Sphero
 from pysphero.driving import Direction, StabilizationIndex
 from pysphero.device_api.sensor import CoreTime, Accelerometer, Quaternion, Attitude, Gyroscope
 
 from sphero_interface.msg import HeadingStamped, ColorRequest, SpheroNames
-from std_msgs.msg import Float32, String
+from std_msgs.msg import Float32, String, Bool
 from sensor_msgs.msg import Imu
 from geometry_msgs.msg import Quaternion as RosQuaternion
+from tf.transformations import euler_from_quaternion
 
 import rospy
 import traceback
 import random
+from IPython import embed
 
-IN_LAB = False # I have spheros in my house. So this is for that. 
+
+IN_LAB = False if os.environ.get("IN_LAB") is None else True
+print(f"IN_LAB: {IN_LAB}")
+
 spheros = {
     # "D9:81:9E:B8:AD:DB": None,
     # "F8:48:B1:E1:1E:2D": None,
     "E9:84:4B:AD:58:EF": None,
-    "F6:24:6F:6D:B1:2D": None,
+    # "F6:24:6F:6D:B1:2D": None,
     # "DC:6A:87:40:AA:AD": None,
-    "EC:73:F2:19:0E:CA": None,
-    "CA:64:39:FC:74:FB": None,
+    # "EC:73:F2:19:0E:CA": None,
+    # "CA:64:39:FC:74:FB": None,
     # "FD:B5:2E:2B:2A:3C": None,
     # "FB:E7:20:44:74:E4": None,
     # "D7:98:82:CD:1F:EA": None,
@@ -41,7 +47,7 @@ spheros = {
 
 ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
 
-SENSOR_READ = True
+SENSOR_READ = False
 STABILIZE_SPHEROS = False
 
 from TrackerParams import GREEN_RGB, Sphero_RGB_Color
@@ -59,8 +65,8 @@ class WrappedSphero(Sphero):
         
         self.cmd_sub = rospy.Subscriber(self.name+"/cmd", HeadingStamped, self.cmd_cb, queue_size=1)
         self.color_sub = rospy.Subscriber(self.name+"/color_request", ColorRequest, self.color_cb, queue_size=1)
+        self.yaw_reset_sub = rospy.Subscriber(self.name+"/reset_north", Bool, self.reset_north, queue_size=1)
 
-        self.prev_cmd_pub = rospy.Publisher(self.name+"/prev_cmd", HeadingStamped, queue_size=1)
         self.light_pub = rospy.Publisher(self.name+"/light", Float32, queue_size=1)
         self.ekf_orientation_pub = rospy.Publisher(self.name+"/imu_data", Imu, queue_size=1) # publish for the ekf node
         
@@ -89,13 +95,16 @@ class WrappedSphero(Sphero):
 
             # self.user_io.set_led_matrix_text_scrolling(string=self.name, color=Color(red=0xff))
             r,g,b = Sphero_RGB_Color[self.name]
-            self.user_io.set_led_matrix_one_color(color=Color(red=r, green=g, blue=b))
+            # for x in range(8):
+            #     for y in range(3):
+            #         self.user_io.set_led_matrix_pixel(Pixel(x,y), Color(red=r, green=g, blue=b))
+            # self.user_io.set_led_matrix_one_color(color=Color(red=r, green=g, blue=b))
             rospy.sleep(0.05)
-            self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=180), back_color=Color())
+            # self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=50), back_color=Color())
+            self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=100), back_color=Color(0,0,100))
             # self.driving.reset_yaw()
         else:
-            print(f"WARN: {self.name} could not connect to bluetooth adapter: ", e)
-            traceback.print_exc()
+            print(f"WARN: {self.name} could not connect to bluetooth adapter.")
             self.is_connected = False
     
     def init_sensor_read(self):
@@ -115,7 +124,6 @@ class WrappedSphero(Sphero):
         except Exception as e:
             print(f"{self.name} failed to reconnect.")
 
-
     def cmd_cb(self, heading_magnitude_cmd):
         '''
         Cap and store the recieved command
@@ -129,6 +137,9 @@ class WrappedSphero(Sphero):
         rospy.loginfo("Setting color to "+str(color_request))
         self.user_io.set_led_matrix_one_color(color=Color(red=int(hex(color_request.r)), green=int(hex(color_request.g)), blue=int(hex(color_request.b))))
 
+    def reset_north(self, msg):
+        self.sensor.magnetometer_calibrate_to_north()
+
     def sensor_bt_cb(self, data:dict):
         #NOTE: Example of what the data structures look like. For more info see the pysphero package.
         # for param in Gyroscope:
@@ -140,7 +151,7 @@ class WrappedSphero(Sphero):
         orientation.x = data.get(Quaternion.x)
         orientation.y = data.get(Quaternion.y)
         orientation.z = data.get(Quaternion.z)
-        orientation.w = data.get(Quaternion.w) 
+        orientation.w = data.get(Quaternion.w)
         
         imu = Imu()
         imu.header.stamp = rospy.Time.now() # NOTE: This maybe should be CoreTime
@@ -148,6 +159,8 @@ class WrappedSphero(Sphero):
         imu.orientation = orientation
         imu.orientation_covariance = [1e-6, 0, 0, 0, 1e-6, 0, 0, 0, 1e-6]
         self.ekf_orientation_pub.publish(imu)
+        r,p,y = [math.degrees(entry) for entry in euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])]
+        print(f"{self.name} {r:1.1f} {p:1.1f} {y:1.1f}")
 
     def step(self):
         if not self.sensors_setup: self.init_sensor_read()
@@ -159,8 +172,6 @@ class WrappedSphero(Sphero):
             self.cmd = HeadingStamped()
 
         self.light_pub.publish(self.sensor.get_ambient_light_sensor_value())
-
-        self.prev_cmd_pub.publish(self.cmd)
         self.driving.drive_with_heading(int(v), int(theta), Direction.forward)
 
 def main():

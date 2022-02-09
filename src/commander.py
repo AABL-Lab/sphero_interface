@@ -15,14 +15,14 @@ from IPython import embed
 import rospy
 from rospy import Subscriber
 from std_msgs.msg import Float32
-from geometry_msgs.msg import Pose2D
+from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped
 from sphero_interface.msg import HeadingStamped, SpheroNames
+from tf.transformations import euler_from_quaternion
 
 SPEED = 30
-USE_DEAD_RECKONING = True
-GOAL_THRESHOLD = 0.1 # How far we can be from a goal before its considered achieved
-
-TEST_SQUARE_LEN = 0.2
+GOAL_THRESHOLD = 50 # How far we can be from a goal before its considered achieved
+TEST_SQUARE_LEN = 200
+LOOP_TRAJECTORY = False
 
 command_history = []
 pose_history = []
@@ -37,13 +37,13 @@ def speed_to_mps(speed):
     return (speed/255) * 2.01168 # max speed (4.5 miles per hour)
 
 class Commander():
-    def __init__(self, sphero_id="sD9"):
+    def __init__(self, sphero_id="sd9"):
         self.sphero_id = sphero_id
         # <<<<<<<<<<< path to follow
         self.path_x_y = [Pose2D(x, y, 0) for x,y in [
-            (0., 0.),
-            (TEST_SQUARE_LEN, 0),
-            (0, 0),
+            (TEST_SQUARE_LEN, TEST_SQUARE_LEN),
+            (2*TEST_SQUARE_LEN, TEST_SQUARE_LEN),
+            # (0, 0),
             # (0, TEST_SQUARE_LEN),
             # (TEST_SQUARE_LEN, TEST_SQUARE_LEN),
             # (0, TEST_SQUARE_LEN),
@@ -55,11 +55,13 @@ class Commander():
         # >>>>>>>>>>>
 
         self.pose = Pose2D()
-        self.dead_reckoning_pose = Pose2D()
-        self.prev_cmd_time = None
+        self.theta_array, self.max_theta_length = [], 10 # smooth it out
+        self.initial_theta = None
 
-        self.pub = rospy.Publisher(sphero_id+"/cmd", HeadingStamped, queue_size=5)
-        self.tracker_sub = rospy.Subscriber(sphero_id+"/prev_cmd", HeadingStamped, self.tracker_cb, queue_size=20)
+        self.pub = rospy.Publisher(sphero_id+"/cmd", HeadingStamped, queue_size=1)
+        self.goal_pub = rospy.Publisher(sphero_id+"/goal", Pose2D, queue_size=1)
+
+        self.ekf_sub = rospy.Subscriber(sphero_id+"_ekf/odom_combined", PoseWithCovarianceStamped, self.ekf_callback)
 
     def is_complete(self):
         return self.path_complete
@@ -68,8 +70,13 @@ class Commander():
         '''
         TODO: This makes sense as an actionserver 
         '''
-        theta_goal = self.pose.theta - math.atan2(goal_pose.y - curr_pose.y, goal_pose.x - curr_pose.x)
+        # Ys need to be flipped because of image coordinate system
+        theta_goal = (math.atan2((-1*goal_pose.y) + curr_pose.y, goal_pose.x - curr_pose.x)) # NOTE: afaik we can't reset the sphero's heading through bluetooth
+        
+        print(f"goal_to_theta {theta_goal:1.2f} th0 {self.initial_theta:1.2f}")
+        theta_goal = self.initial_theta - theta_goal
         theta_goal = rad2deg(theta_goal)
+
         while theta_goal < 0: theta_goal += 360.
         while theta_goal > 360: theta_goal -= 360.
 
@@ -79,24 +86,6 @@ class Commander():
         self.pub.publish(cmd)
         print(f"current {curr_pose.x:1.2f} {curr_pose.y:1.2f} {curr_pose.theta:1.2f} goal {goal_pose.x:1.2f} {goal_pose.y:1.2f} {goal_pose.theta:1.2f} cmd {cmd.v:1.2f} {cmd.theta:1.2f}")
         return cmd
-
-    def tracker_cb(self, data: HeadingStamped):
-        '''
-        Track dead reckoning pose using the messsages that are actually sent to the sphero.
-        '''
-        if not self.prev_cmd_time:
-            pass
-        else:
-            dt = data.t - self.prev_cmd_time
-            v = speed_to_mps(data.v)
-            self.dead_reckoning_pose.x += v * math.cos(data.theta) * dt
-            self.dead_reckoning_pose.y += v * math.sin(data.theta) * dt
-            self.dead_reckoning_pose.theta = data.theta
-
-            if (USE_DEAD_RECKONING):
-                self.set_tracked_position(self.dead_reckoning_pose)
-
-        self.prev_cmd_time = data.t
 
     def set_tracked_position(self, pose):
         '''
@@ -109,24 +98,38 @@ class Commander():
         if (self.is_complete()): return
 
         goal_pose = self.path_x_y[self.trajectory_idx]
+        self.goal_pub.publish(Pose2D(goal_pose.x, goal_pose.y, 0))
         if (pose2d_distance(goal_pose, self.pose) < GOAL_THRESHOLD):
             self.trajectory_idx += 1
             if (self.trajectory_idx >= len(self.path_x_y)): # done
-                self.path_complete = True 
+                self.path_complete = True
+                if (LOOP_TRAJECTORY):
+                    self.trajectory_idx = 0
                 return
-            else:
+            else: # new goal
                 goal_pose = self.path_x_y[self.trajectory_idx]
                 print(f"new goal {goal_pose.x:1.2f} {goal_pose.y:1.2f}")
 
 
         cmd = self.get_command(self.pose, goal_pose)
         command_history.append(cmd)
+        self.pub.publish(cmd)
 
     def step(self):
         self.trajectory_step()
-        pose_history.append(deepcopy(self.dead_reckoning_pose))
-        # rospy.loginfo(f"Dead Reckoned Pose (x, y, theta): {self.dead_reckoning_pose.x:1.2f} {self.dead_reckoning_pose.y:1.2f} {self.dead_reckoning_pose.theta:1.2f}")
 
+    def ekf_callback(self, msg):
+        pose = Pose2D(msg.pose.pose.position.x, msg.pose.pose.position.y, euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])[2])
+        self.theta_array.append(pose.theta)
+        if len(self.theta_array) > self.max_theta_length: self.theta_array.pop(0)
+        self.pose = pose
+        self.pose.theta = sum(self.theta_array)/len(self.theta_array)
+
+        if (self.initial_theta is None):
+            print(f"{self.sphero_id} initial theta {self.pose.theta}")
+            self.initial_theta = self.pose.theta
+        # else:
+        #     print(f"{self.sphero_id} current theta {self.pose.theta}")
 
 all_commanders = []
 def sphero_names_cb(msg: SpheroNames):
@@ -146,6 +149,9 @@ def main_group():
     rospy.Subscriber("/sphero_names", SpheroNames, sphero_names_cb)
     while not rospy.is_shutdown(): # do work
         for commander in all_commanders:
+            if commander.initial_theta is None:
+                continue # can't plan without knowing sphero initial headings
+            
             commander.step()
             if commander.is_complete():
                 for cmd, pose in zip(command_history, pose_history):

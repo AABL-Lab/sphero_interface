@@ -20,6 +20,7 @@ from scipy import ndimage
 
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 '''
 Dictionary of Sphero Names (keys) and their corresponding colors (values)
@@ -28,7 +29,7 @@ from TrackerParams import LOWER_GREEN, UPPER_GREEN, Sphero_Params_by_ID, Tracker
 
 SHOW_IMAGES = True
 
-EXPECTED_SPHERO_RADIUS = 46 # size of spheros in pixels
+EXPECTED_SPHERO_RADIUS = 35 # size of spheros in pixels
 circle_radiuses = dict()
 hsv = None
 
@@ -44,18 +45,22 @@ class VisionDetect:
         self.last_detected_color_pose = None
 
         self.odom_pub = rospy.Publisher(f"/{self.sphero_id}/odom", Odometry, queue_size=10)
+        
+        self.goal = None
+        self.goal_sub = rospy.Subscriber(f"/{self.sphero_id}/goal", Pose2D, goal_cb, callback_args=self.sphero_id) # this should be in rviz probably
         self.ekf_odom_sub = rospy.Subscriber(f"/{self.sphero_id}_ekf/odom_combined", PoseWithCovarianceStamped, ekf_cb, callback_args=self.sphero_id)
 
     def read_image(self, image):
         self.image = image
         self.grayimage = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
 
-
     # Detect Hough Circles on an image. No Sphero specific code. 
-    def detectCircle(self, minRad = 0, maxRad = 0):
-        img = self.image.copy()
+    def detectCircle(self, image, minRad = 0, maxRad = 0):
+        img = image.copy()
+        # grayimage = cv2.cvtColor(img, cv2.COLOR_HSV2GRAY)
+        _, _, grayimage = cv2.split(img) # Just use the value channel for gray
         # Blur using 3 * 3 kernel.
-        gray_blurred = cv2.blur(self.grayimage, (3, 3))
+        gray_blurred = cv2.blur(grayimage, (3, 3))
         
         # Apply Hough transform on the blurred image.
         circles = cv2.HoughCircles(gray_blurred,cv2.HOUGH_GRADIENT, 1, minDist=EXPECTED_SPHERO_RADIUS,param1=20,param2=30,
@@ -65,15 +70,10 @@ class VisionDetect:
         if circles is not None:
             circles =  np.uint16(np.around(circles))
             for i in circles[0, :]:
-                r = i[2]
-                if r not in circle_radiuses:
-                    circle_radiuses[r] = 1
-                else:
-                    circle_radiuses[r] += 1
                 cv2.circle(gray_blurred, (i[0], i[1]), i[2], (0,255,0), 2)
 
         # print(circle_radiuses)
-        return gray_blurred
+        return gray_blurred, circles
 
     def processColor(self, hsv_img, lower=None, upper=None):
         '''
@@ -105,14 +105,15 @@ class VisionDetect:
 
         if (center):
             cv2.circle(mask, center, int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
-            self.last_detected_color_pose = center
-            self.last_detected_color_ts = rospy.get_time()
 
         return mask, center
 
         #cv2.imshow('mask',mask)
         # res = cv2.bitwise_and(img, img, mask=mask)
         # return res
+    def set_detected_position(self, x_img, y_img, theta):
+            self.last_detected_color_pose = (x_img, y_img, theta)
+            self.last_detected_color_ts = rospy.get_time()
 
     # Detect Hough Lines
     def detectLine(self, minLen = 20, maxLGap = 5):
@@ -123,6 +124,9 @@ class VisionDetect:
         for line in lines[0]:
             cv2.line(img, (line[0], line[1]), (line[2], line[3]), (0,0,255), 2)
         return img
+
+    def goal_callback(self, msg):
+        self.goal = msg
 
 def img_to_world(coords_img):
     # TODO: Hardcoded until in lab
@@ -141,7 +145,12 @@ def mouse_cb(event, x, y, flags, params):
 
 ekf_pose2d = dict()
 def ekf_cb(data, sphero_id):
-    ekf_pose2d[sphero_id] = (data.pose.pose.position.x, data.pose.pose.position.y)
+    ekf_pose2d[sphero_id] = (data.pose.pose.position.x, data.pose.pose.position.y, euler_from_quaternion([data.pose.pose.orientation.x, data.pose.pose.orientation.y, data.pose.pose.orientation.z, data.pose.pose.orientation.w])[2])
+    rospy.loginfo(f"{sphero_id} ekf_cb: {ekf_pose2d[sphero_id][0]:1.1f}, {ekf_pose2d[sphero_id][1]:1.1f}, {ekf_pose2d[sphero_id][2]:1.1f}")
+
+goal_pose2d = dict()
+def goal_cb(goal_pose, sphero_id):
+    goal_pose2d[sphero_id] = goal_pose
 
 
 detectors_dict = dict()
@@ -159,10 +168,10 @@ def main():
     if (SHOW_IMAGES):
         cv2.namedWindow('image', cv2.WINDOW_NORMAL)
         cv2.namedWindow('color', cv2.WINDOW_NORMAL)
-        cv2.namedWindow('circles', cv2.WINDOW_NORMAL)
+        # cv2.namedWindow('tracked', cv2.WINDOW_NORMAL)
         cv2.moveWindow('image', 0, 0)
         cv2.moveWindow('color', 750, 0)
-        cv2.moveWindow('circles', 1500, 0)
+        # cv2.moveWindow('tracked', 600, 500)
 
     # >>>> Open Video Stream
     video = cv2.VideoCapture(-1) # for using CAM
@@ -187,16 +196,24 @@ def main():
         hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         masks = []
         for idx, I in enumerate(detectors_dict.values()):
+            # Get a circle around the sphero-specific color
             mask, center = I.processColor(hsv_frame)
             masks.append(mask)
-            # grab the green from this circle
+            # grab the green from this circle to indicate the forward direction
             if (center is not None):
                 orientation_frame = cv2.bitwise_and(hsv_frame, hsv_frame, mask=mask)
                 green_mask, green_center = I_generic.processColor(orientation_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
+                # gray_blurred, circles = I_generic.detectCircle(orientation_frame)
                 if (green_center is not None):
-                    theta = degrees(atan2(green_center[1] - center[1], green_center[0] - center[0]))
+                    # theta = atan2(green_center[1] - center[1], green_center[0] - center[0])
+                    theta = atan2(center[1] - green_center[1], center[0] - green_center[0])
                     print(f"{I.sphero_id} theta: {theta:1.2f}")
-                    cv2.line(frame, center, green_center, (0,255,0), 2)
+                    cv2.line(frame, green_center, center, (255,0,0), 2)
+                    
+                    avg_center = (int((center[0] + green_center[0])/2), int((center[1] + green_center[1])/2))
+                    I.set_detected_position(avg_center[0], avg_center[1], theta)
+                    # if circles is not None:
+                    #     cv2.line(frame, (circles[0][0], circles[0][1], circles[0][2]), green_center, (255,0,0), 2)
 
 
         color_mask = None
@@ -217,6 +234,7 @@ def main():
         # <<<<< Detect Circles and add to position estimate
 
         # cv2.imshow("circles", circle)
+
         if (SHOW_IMAGES):
             cv2.imshow("image", frame)
             cv2.imshow("color", color_frame)
@@ -224,10 +242,15 @@ def main():
 
         if (SHOW_IMAGES and ekf_pose2d):
             efk_frame = frame.copy()
-            for sphero_id, (x,y) in ekf_pose2d.items():
-                rospy.loginfo(f"{sphero_id} {x:1.2f}, {y:1.2f}")
+            for sphero_id, (x,y,theta) in ekf_pose2d.items():
+                # rospy.loginfo(f"{sphero_id} {x:1.2f}, {y:1.2f}")
                 if (x > 0 and y > 0):
                     cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
+                    draw_theta = theta + np.pi
+                    cv2.line(efk_frame, (int(x), int(y)), (int(x+15*np.cos(draw_theta)), int(y+15*np.sin(draw_theta))), (0,0,255), 2)
+            
+            for pose2d in goal_pose2d.values():
+                cv2.circle(efk_frame, (int(pose2d.x), int(pose2d.y)), 25, (255,255,255), -1)
             cv2.imshow("tracked", efk_frame)
 
         # >>>> convert image coordinates to scene coordinates
@@ -235,14 +258,17 @@ def main():
         for I in detectors_dict.values():
             pose_img = I.last_detected_color_pose
             if pose_img is not None:
-                x,y = img_to_world(pose_img)
+                # x,y = img_to_world(pose_img) # TODO: need to transform?
+                x,y,theta = pose_img
                 odom_msg = Odometry()
                 odom_msg.header.stamp = rospy.Time.now()
                 odom_msg.header.frame_id = "odom"
                 p = PoseWithCovariance()
                 p.pose.position = Point(x,y,0)
-                p.pose.orientation = Quaternion(0,0,0,1)
-                p.covariance = np.identity(6).flatten() # TODO
+                # q = quaternion_from_euler(0., 0., theta)
+                q = quaternion_from_euler(0., 0., theta)
+                p.pose.orientation = Quaternion(*q)
+                p.covariance = (1e-6*np.identity(6)).flatten() # TODO
                 tw = TwistWithCovariance() # TODO
                 odom_msg.pose = p
                 odom_msg.twist = tw
