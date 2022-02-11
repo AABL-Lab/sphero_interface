@@ -26,11 +26,11 @@ print(f"IN_LAB: {IN_LAB}")
 spheros = {
     # "D9:81:9E:B8:AD:DB": None,
     # "F8:48:B1:E1:1E:2D": None,
-    "E9:84:4B:AD:58:EF": None,
+    # "E9:84:4B:AD:58:EF": None,
     # "F6:24:6F:6D:B1:2D": None,
     # "DC:6A:87:40:AA:AD": None,
-    # "EC:73:F2:19:0E:CA": None,
-    # "CA:64:39:FC:74:FB": None,
+    "EC:73:F2:19:0E:CA": None,
+    "CA:64:39:FC:74:FB": None,
     # "FD:B5:2E:2B:2A:3C": None,
     # "FB:E7:20:44:74:E4": None,
     # "D7:98:82:CD:1F:EA": None,
@@ -47,7 +47,7 @@ spheros = {
 
 ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
 
-SENSOR_READ = False
+SENSOR_READ = True
 STABILIZE_SPHEROS = False
 
 from TrackerParams import GREEN_RGB, Sphero_RGB_Color
@@ -101,7 +101,7 @@ class WrappedSphero(Sphero):
             # self.user_io.set_led_matrix_one_color(color=Color(red=r, green=g, blue=b))
             rospy.sleep(0.05)
             # self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=50), back_color=Color())
-            self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=100), back_color=Color(0,0,100))
+            self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=100), back_color=Color(r,g,b))
             # self.driving.reset_yaw()
         else:
             print(f"WARN: {self.name} could not connect to bluetooth adapter.")
@@ -164,6 +164,9 @@ class WrappedSphero(Sphero):
 
     def step(self):
         if not self.sensors_setup: self.init_sensor_read()
+        if not self.is_connected: 
+            print(f"Not connected to {self.name}.")
+            return
 
         # cap inputs
         t, v, theta = self.cmd.t, self.cmd.v, self.cmd.theta
@@ -207,6 +210,7 @@ def main():
                 traceback.print_exc()
                 print(f"{mac_address} error: {e}")
         connected_names_pub.publish(SpheroNames(connected_sphero_names))
+        print(f"looping...")
         rospy.sleep(0.05)
 
     # Close out the blueooth adapters

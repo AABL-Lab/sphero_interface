@@ -10,35 +10,35 @@ class TrackerParams(NamedTuple):
     hsv_upper: tuple
 
 
-BLUE_RGB = (0, 0, 255)
+BLUE_RGB = (0, 0, 100)
 BLUE_HSV = (110,100,250)
 
-RED_RGB = (255, 0, 0)
-RED_HSV = (170, 80, 240)
+RED_RGB = (130, 0, 0)
+RED_HSV = (170, 80, 200)
 
-GREEN_RGB = (0, 126, 0)
+GREEN_RGB = (0, 100, 0)
 GREEN_HSV = (82, 50, 200)
 
 # YELLOW_RGB = (0, 255, 255)
 # YELLOW_HSV = (30, 100, 240)
 
 Sphero_RGB_Color = {
-    "sd9": (255, 0, 0),
-    "sf8": (0, 0, 255),
-    "se9": (0, 0, 255),
-    "sf6": (255, 0, 0),
-    "sdc": (255, 0, 0),
-    "sec": (255, 0, 0),
-    "sca": (255, 0, 0),
-    "sfd": (255, 0, 0),
-    "sfb": (255, 0, 0),
-    "sd7": (255, 0, 0),
-    "sd1": (255, 0, 0),
-    "sc8": (255, 0, 0),
-    "sd1": (255, 0, 0),
-    "scD": (255, 0, 0),
-    "sf0": (255, 0, 0),
-    "sc9": (255, 0, 0),
+    "sd9": RED_RGB,
+    "sf8": BLUE_RGB,
+    "se9": BLUE_RGB,
+    "sf6": RED_RGB,
+    "sdc": RED_RGB,
+    "sec": RED_RGB,
+    "sca": BLUE_RGB,
+    "sfd": RED_RGB,
+    "sfb": RED_RGB,
+    "sd7": RED_RGB,
+    "sd1": RED_RGB,
+    "sc8": RED_RGB,
+    "sd1": RED_RGB,
+    "scD": RED_RGB,
+    "sf0": RED_RGB,
+    "sc9": RED_RGB,
 }
 
 # How the colors appear (done by hand)
@@ -49,7 +49,7 @@ Sphero_HSV_Color = {
     "sf6": RED_HSV,
     "sdc": RED_HSV,
     "sec": RED_HSV,
-    "sca": RED_HSV,
+    "sca": BLUE_HSV,
     "sfd": RED_HSV,
     "sfb": RED_HSV,
     "sd7": RED_HSV,
@@ -80,9 +80,9 @@ Sphero_Params_by_ID = {
     "sc9": TrackerParams(hsv_lower=(0, 0, 0), hsv_upper=(255, 255, 255)),
 }
 
-hue_range = 10
-sat_range = 20
-val_range = 10
+hue_range = 20
+sat_range = 30
+val_range = 20
 # now go through and set the correct params
 for k,v in Sphero_Params_by_ID.items():
     # hsv = rgb_to_hsv([entry/255. for entry in Sphero_RGB_Color[k]])

@@ -6,7 +6,9 @@ Email: siddharthchandragzb@gmail.com
 '''
 
 from math import atan2, degrees
+from re import S
 import traceback
+from IPython import embed
 
 import rospy
 from std_msgs.msg import Float32
@@ -31,7 +33,7 @@ SHOW_IMAGES = True
 
 EXPECTED_SPHERO_RADIUS = 35 # size of spheros in pixels
 circle_radiuses = dict()
-hsv = None
+hsv_frame = None
 
 class VisionDetect:
     def __init__(self, sphero_id=None, imageName=None):
@@ -43,6 +45,7 @@ class VisionDetect:
         # This is probably a bad idea
         self.last_detected_color_ts = 0.
         self.last_detected_color_pose = None
+        self.theta_smoother = [] # low pass filter for theta
 
         self.odom_pub = rospy.Publisher(f"/{self.sphero_id}/odom", Odometry, queue_size=10)
         
@@ -80,14 +83,12 @@ class VisionDetect:
         Produce a mask of a large circle around any the spheros color range. Store result.        
         Returns: The mask or None if colors aren't detected
         '''
-        global hsv
-        hsv = hsv_img.copy()
-
         if (lower is None) or (upper is None):
             lower = self.tracker_params.hsv_lower
             upper = self.tracker_params.hsv_upper
+            # print(f"{self.sphero_id} lower: {lower} upper: {upper}")
 
-        mask = cv2.inRange(hsv, lower, upper)
+        mask = cv2.inRange(hsv_img, lower, upper)
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         center = None
@@ -112,6 +113,10 @@ class VisionDetect:
         # res = cv2.bitwise_and(img, img, mask=mask)
         # return res
     def set_detected_position(self, x_img, y_img, theta):
+            self.theta_smoother.append(theta)
+            if len(self.theta_smoother) > 10: self.theta_smoother.pop(0)
+            theta = sum(self.theta_smoother)/len(self.theta_smoother)
+
             self.last_detected_color_pose = (x_img, y_img, theta)
             self.last_detected_color_ts = rospy.get_time()
 
@@ -135,12 +140,12 @@ def img_to_world(coords_img):
     return x, y
 
 def mouse_cb(event, x, y, flags, params):
-    imgk = hsv.copy()
-    # checking for right mouse clicks     
+    # checking for right mouse clicks
+    imagek = hsv_frame.copy()
     if event==cv2.EVENT_MOUSEMOVE:  
-        H = imgk[y, x, 0]
-        S = imgk[y, x, 1]
-        V = imgk[y, x, 2]
+        H = imagek[y, x, 0]
+        S = imagek[y, x, 1]
+        V = imagek[y, x, 2]
         print(f'({x},{y})-  (h,s,v) {H}, {S}, {V}')
 
 ekf_pose2d = dict()
@@ -193,6 +198,7 @@ def main():
             continue
 
         # >>>> Filter for all the spheros colors
+        global hsv_frame
         hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         masks = []
         for idx, I in enumerate(detectors_dict.values()):
@@ -205,12 +211,11 @@ def main():
                 green_mask, green_center = I_generic.processColor(orientation_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
                 # gray_blurred, circles = I_generic.detectCircle(orientation_frame)
                 if (green_center is not None):
-                    # theta = atan2(green_center[1] - center[1], green_center[0] - center[0])
-                    theta = atan2(center[1] - green_center[1], center[0] - green_center[0])
-                    print(f"{I.sphero_id} theta: {theta:1.2f}")
+                    theta = atan2(-green_center[1] + center[1], green_center[0] - center[0]) # Image coords need to have y swapped
+                    # print(f"{I.sphero_id} theta: {theta:1.2f}")q
                     cv2.line(frame, green_center, center, (255,0,0), 2)
                     
-                    avg_center = (int((center[0] + green_center[0])/2), int((center[1] + green_center[1])/2))
+                    avg_center = ((center[0] + green_center[0])/2, (center[1] + green_center[1])/2)
                     I.set_detected_position(avg_center[0], avg_center[1], theta)
                     # if circles is not None:
                     #     cv2.line(frame, (circles[0][0], circles[0][1], circles[0][2]), green_center, (255,0,0), 2)
@@ -246,8 +251,8 @@ def main():
                 # rospy.loginfo(f"{sphero_id} {x:1.2f}, {y:1.2f}")
                 if (x > 0 and y > 0):
                     cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
-                    draw_theta = theta + np.pi
-                    cv2.line(efk_frame, (int(x), int(y)), (int(x+15*np.cos(draw_theta)), int(y+15*np.sin(draw_theta))), (0,0,255), 2)
+                    draw_theta = theta
+                    cv2.line(efk_frame, (int(x), int(y)), (int(x+15*np.cos(draw_theta)), int(y-15*np.sin(draw_theta))), (0,0,255), 2)
             
             for pose2d in goal_pose2d.values():
                 cv2.circle(efk_frame, (int(pose2d.x), int(pose2d.y)), 25, (255,255,255), -1)

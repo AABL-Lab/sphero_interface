@@ -43,7 +43,9 @@ class Commander():
         self.path_x_y = [Pose2D(x, y, 0) for x,y in [
             (TEST_SQUARE_LEN, TEST_SQUARE_LEN),
             (2*TEST_SQUARE_LEN, TEST_SQUARE_LEN),
-            # (0, 0),
+            (2*TEST_SQUARE_LEN, 1.5*TEST_SQUARE_LEN),
+            (TEST_SQUARE_LEN, 1.5*TEST_SQUARE_LEN),
+            (TEST_SQUARE_LEN, TEST_SQUARE_LEN),
             # (0, TEST_SQUARE_LEN),
             # (TEST_SQUARE_LEN, TEST_SQUARE_LEN),
             # (0, TEST_SQUARE_LEN),
@@ -61,6 +63,11 @@ class Commander():
         self.pub = rospy.Publisher(sphero_id+"/cmd", HeadingStamped, queue_size=1)
         self.goal_pub = rospy.Publisher(sphero_id+"/goal", Pose2D, queue_size=1)
 
+        # Initialize the sphero's orientation to what it considers to be 0
+        for i in range(10):
+            self.pub.publish(HeadingStamped(v=0, theta=0))
+            rospy.sleep(0.05)
+
         self.ekf_sub = rospy.Subscriber(sphero_id+"_ekf/odom_combined", PoseWithCovarianceStamped, self.ekf_callback)
 
     def is_complete(self):
@@ -75,14 +82,24 @@ class Commander():
         
         print(f"goal_to_theta {theta_goal:1.2f} th0 {self.initial_theta:1.2f}")
         theta_goal = self.initial_theta - theta_goal
-        theta_goal = rad2deg(theta_goal)
 
-        while theta_goal < 0: theta_goal += 360.
-        while theta_goal > 360: theta_goal -= 360.
+
+        theta_goal = theta_goal
+        current_theta_local = self.initial_theta - self.pose.theta
+
+        while theta_goal < 0: theta_goal += 2*math.pi
+        while theta_goal > 2*math.pi: theta_goal -= 2*math.pi
+        while current_theta_local < 0: current_theta_local += 2*math.pi
+        while current_theta_local > 2*math.pi: current_theta_local -= 2*math.pi
+
+        diff_theta = abs(theta_goal - current_theta_local)
+        print(f"diff_theta {diff_theta:1.2f}")
 
         cmd = HeadingStamped()
-        cmd.v = SPEED
-        cmd.theta = theta_goal
+        cmd.v = SPEED if diff_theta < (math.pi / 4.) else 0
+        # cmd.v = 0
+        cmd.theta = rad2deg(theta_goal)
+        
         self.pub.publish(cmd)
         print(f"current {curr_pose.x:1.2f} {curr_pose.y:1.2f} {curr_pose.theta:1.2f} goal {goal_pose.x:1.2f} {goal_pose.y:1.2f} {goal_pose.theta:1.2f} cmd {cmd.v:1.2f} {cmd.theta:1.2f}")
         return cmd
@@ -99,19 +116,24 @@ class Commander():
 
         goal_pose = self.path_x_y[self.trajectory_idx]
         self.goal_pub.publish(Pose2D(goal_pose.x, goal_pose.y, 0))
-        if (pose2d_distance(goal_pose, self.pose) < GOAL_THRESHOLD):
+        distance_to_goal = pose2d_distance(self.pose, goal_pose)
+        print(f"distance_to_goal {distance_to_goal:1.2f}")
+        if (distance_to_goal < GOAL_THRESHOLD):
             self.trajectory_idx += 1
             if (self.trajectory_idx >= len(self.path_x_y)): # done
                 self.path_complete = True
                 if (LOOP_TRAJECTORY):
                     self.trajectory_idx = 0
-                return
             else: # new goal
                 goal_pose = self.path_x_y[self.trajectory_idx]
                 print(f"new goal {goal_pose.x:1.2f} {goal_pose.y:1.2f}")
 
 
-        cmd = self.get_command(self.pose, goal_pose)
+        if (self.path_complete):
+            cmd = HeadingStamped()
+        else:
+            cmd = self.get_command(self.pose, goal_pose)
+        # cmd = HeadingStamped()
         command_history.append(cmd)
         self.pub.publish(cmd)
 
@@ -119,15 +141,14 @@ class Commander():
         self.trajectory_step()
 
     def ekf_callback(self, msg):
-        pose = Pose2D(msg.pose.pose.position.x, msg.pose.pose.position.y, euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])[2])
+        euler = euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
+        pose = Pose2D(msg.pose.pose.position.x, msg.pose.pose.position.y, euler[2])
         self.theta_array.append(pose.theta)
-        if len(self.theta_array) > self.max_theta_length: self.theta_array.pop(0)
         self.pose = pose
-        self.pose.theta = sum(self.theta_array)/len(self.theta_array)
-
         if (self.initial_theta is None):
             print(f"{self.sphero_id} initial theta {self.pose.theta}")
             self.initial_theta = self.pose.theta
+
         # else:
         #     print(f"{self.sphero_id} current theta {self.pose.theta}")
 
@@ -153,11 +174,11 @@ def main_group():
                 continue # can't plan without knowing sphero initial headings
             
             commander.step()
-            if commander.is_complete():
-                for cmd, pose in zip(command_history, pose_history):
-                    print(f"{cmd.t:1.2f}s {cmd.v} {cmd.theta} -> {pose.x:1.2f} {pose.y:1.2f} {pose.theta:1.2f}")
-                break
-        rospy.sleep(0.1) # sleep for messages and interrupts
+            # if commander.is_complete():
+            #     for cmd, pose in zip(command_history, pose_history):
+            #         print(f"{cmd.t:1.2f}s {cmd.v} {cmd.theta} -> {pose.x:1.2f} {pose.y:1.2f} {pose.theta:1.2f}")
+            #     break
+        rospy.sleep(0.05) # sleep for messages and interrupts
 
 '''
 Run the single commander to control on sphero.
