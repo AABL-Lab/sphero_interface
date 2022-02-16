@@ -5,7 +5,6 @@ import os
 import random
 from turtle import update
 
-from sympy import false, true
 from pysphero.device_api.user_io import Color, Pixel
 from pysphero.core import Sphero
 from pysphero.driving import Direction, StabilizationIndex
