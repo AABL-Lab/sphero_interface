@@ -3,6 +3,9 @@ from time import sleep, time
 import math
 import os
 import random
+from turtle import update
+
+from sympy import false, true
 from pysphero.device_api.user_io import Color, Pixel
 from pysphero.core import Sphero
 from pysphero.driving import Direction, StabilizationIndex
@@ -121,8 +124,10 @@ class WrappedSphero(Sphero):
         try:
             self.setup()
             self.init_sensor_read()
+            return True
         except Exception as e:
             print(f"{self.name} failed to reconnect.")
+            return False
 
     def cmd_cb(self, heading_magnitude_cmd):
         '''
@@ -180,37 +185,47 @@ class WrappedSphero(Sphero):
 def main():
     print("Starting sphero interface node")
     rospy.init_node("interface")
-    connected_names_pub = rospy.Publisher("/sphero_names", SpheroNames, queue_size=1) # publish a list of the names of connected spheros
+    connected_names_pub = rospy.Publisher("/sphero_names", SpheroNames, queue_size=1, latch=True) # publish a list of the names of connected spheros
 
     '''
     This node has to maintain connections to all spheros and handle send and receive.
     '''
     # Wake up all the spheros 
+    connected_sphero_names = set()
     for ma in spheros.keys():
         rospy.loginfo("Waking up sphero "+ma)
         try:
             sphero = WrappedSphero(mac_address=ma.lower())
             spheros[ma] = sphero
+            connected_sphero_names.add(sphero.name)
         except Exception as e:
             print(f"WARN: Could not connect to sphero {ma}: {e}")
             traceback.print_exc()
 
 
+    update_names = True
     while not rospy.is_shutdown():
-        connected_sphero_names = []
         for mac_address, sphero in spheros.items():
             if not sphero: continue
-            connected_sphero_names.append(sphero.name)
             try:
                 if (sphero.is_connected):
                     sphero.step()
                 else:
-                    sphero.reconnect()
+                    print(f"Attempting to reconnect from disconnected sphero {sphero.name}...")
+                    if not sphero.reconnect():
+                        print(f"Could not reconnect to {sphero.name}...")
+                        connected_sphero_names.remove(sphero.name)
+                        update_names = True
+                    
             except Exception as e:
                 traceback.print_exc()
                 print(f"{mac_address} error: {e}")
-        connected_names_pub.publish(SpheroNames(connected_sphero_names))
-        print(f"looping...")
+        
+        if (update_names):
+            connected_names_pub.publish(SpheroNames(connected_sphero_names))
+            update_names = False
+
+        # print(f"looping...")
         rospy.sleep(0.05)
 
     # Close out the blueooth adapters
