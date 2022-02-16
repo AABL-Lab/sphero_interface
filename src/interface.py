@@ -34,8 +34,8 @@ spheros = {
     # "FD:B5:2E:2B:2A:3C": None,
     # "FB:E7:20:44:74:E4": None,
     # "D7:98:82:CD:1F:EA": None,
-    # "D1:FC:A0:92:D5:19": None,
-    # "C8:2E:9A:E9:37:16": None,
+    "D1:FC:A0:92:D5:19": None,
+    "C8:2E:9A:E9:37:16": None,
     # "D1:7E:07:ED:D1:37": None,
     # "CD:7D:FA:67:54:AB": None,
     # "F0:35:04:88:07:76": None,
@@ -101,7 +101,7 @@ class WrappedSphero(Sphero):
             # self.user_io.set_led_matrix_one_color(color=Color(red=r, green=g, blue=b))
             rospy.sleep(0.05)
             # self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=50), back_color=Color())
-            self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=100), back_color=Color(r,g,b))
+            self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=GREEN_RGB[1]), back_color=Color(r,g,b))
             # self.driving.reset_yaw()
         else:
             print(f"WARN: {self.name} could not connect to bluetooth adapter.")
@@ -160,7 +160,7 @@ class WrappedSphero(Sphero):
         imu.orientation_covariance = [1e-6, 0, 0, 0, 1e-6, 0, 0, 0, 1e-6]
         self.ekf_orientation_pub.publish(imu)
         r,p,y = [math.degrees(entry) for entry in euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])]
-        print(f"{self.name} {r:1.1f} {p:1.1f} {y:1.1f}")
+        # print(f"{self.name} {r:1.1f} {p:1.1f} {y:1.1f}")
 
     def step(self):
         if not self.sensors_setup: self.init_sensor_read()

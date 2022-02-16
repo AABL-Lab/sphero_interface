@@ -27,11 +27,11 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 '''
 Dictionary of Sphero Names (keys) and their corresponding colors (values)
 '''
-from TrackerParams import LOWER_GREEN, UPPER_GREEN, Sphero_Params_by_ID, TrackerParams
+from TrackerParams import LOWER_GREEN, TRACK_WITH_CIRCLES, TRACK_WITH_COLOR, UPPER_GREEN, Sphero_Params_by_ID, TrackerParams
 
 SHOW_IMAGES = True
 
-EXPECTED_SPHERO_RADIUS = 35 # size of spheros in pixels
+EXPECTED_SPHERO_RADIUS = 20 # size of spheros in pixels
 circle_radiuses = dict()
 hsv_frame = None
 
@@ -63,10 +63,12 @@ class VisionDetect:
         # grayimage = cv2.cvtColor(img, cv2.COLOR_HSV2GRAY)
         _, _, grayimage = cv2.split(img) # Just use the value channel for gray
         # Blur using 3 * 3 kernel.
+
         gray_blurred = cv2.blur(grayimage, (3, 3))
+        # gray_blurred = grayimage
         
         # Apply Hough transform on the blurred image.
-        circles = cv2.HoughCircles(gray_blurred,cv2.HOUGH_GRADIENT, 1, minDist=EXPECTED_SPHERO_RADIUS,param1=20,param2=30,
+        circles = cv2.HoughCircles(gray_blurred,cv2.HOUGH_GRADIENT, 1, minDist=EXPECTED_SPHERO_RADIUS, param1=20, param2=15,
             minRadius=int(0.9*EXPECTED_SPHERO_RADIUS),
             maxRadius=int(1.1*EXPECTED_SPHERO_RADIUS))
 
@@ -113,12 +115,12 @@ class VisionDetect:
         # res = cv2.bitwise_and(img, img, mask=mask)
         # return res
     def set_detected_position(self, x_img, y_img, theta):
-            self.theta_smoother.append(theta)
-            if len(self.theta_smoother) > 10: self.theta_smoother.pop(0)
-            theta = sum(self.theta_smoother)/len(self.theta_smoother)
+        self.theta_smoother.append(theta)
+        if len(self.theta_smoother) > 10: self.theta_smoother.pop(0)
+        theta = sum(self.theta_smoother)/len(self.theta_smoother)
 
-            self.last_detected_color_pose = (x_img, y_img, theta)
-            self.last_detected_color_ts = rospy.get_time()
+        self.last_detected_color_pose = (x_img, y_img, theta)
+        self.last_detected_color_ts = rospy.get_time()
 
     # Detect Hough Lines
     def detectLine(self, minLen = 20, maxLGap = 5):
@@ -151,7 +153,7 @@ def mouse_cb(event, x, y, flags, params):
 ekf_pose2d = dict()
 def ekf_cb(data, sphero_id):
     ekf_pose2d[sphero_id] = (data.pose.pose.position.x, data.pose.pose.position.y, euler_from_quaternion([data.pose.pose.orientation.x, data.pose.pose.orientation.y, data.pose.pose.orientation.z, data.pose.pose.orientation.w])[2])
-    rospy.loginfo(f"{sphero_id} ekf_cb: {ekf_pose2d[sphero_id][0]:1.1f}, {ekf_pose2d[sphero_id][1]:1.1f}, {ekf_pose2d[sphero_id][2]:1.1f}")
+    # rospy.loginfo(f"{sphero_id} ekf_cb: {ekf_pose2d[sphero_id][0]:1.1f}, {ekf_pose2d[sphero_id][1]:1.1f}, {ekf_pose2d[sphero_id][2]:1.1f}")
 
 goal_pose2d = dict()
 def goal_cb(goal_pose, sphero_id):
@@ -172,10 +174,16 @@ def main():
 
     if (SHOW_IMAGES):
         cv2.namedWindow('image', cv2.WINDOW_NORMAL)
-        cv2.namedWindow('color', cv2.WINDOW_NORMAL)
+        # cv2.namedWindow('color', cv2.WINDOW_NORMAL)
         # cv2.namedWindow('tracked', cv2.WINDOW_NORMAL)
         cv2.moveWindow('image', 0, 0)
-        cv2.moveWindow('color', 750, 0)
+        # cv2.moveWindow('color', 750, 0)
+
+        # cv2.namedWindow('color0', cv2.WINDOW_NORMAL)
+        # cv2.namedWindow('color1', cv2.WINDOW_NORMAL)
+        # cv2.namedWindow('color2', cv2.WINDOW_NORMAL)
+        # cv2.namedWindow('color3', cv2.WINDOW_NORMAL)
+
         # cv2.moveWindow('tracked', 600, 500)
 
     # >>>> Open Video Stream
@@ -197,52 +205,76 @@ def main():
             print('Couldnt read frame')
             continue
 
-        # >>>> Filter for all the spheros colors
-        global hsv_frame
-        hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        masks = []
-        for idx, I in enumerate(detectors_dict.values()):
-            # Get a circle around the sphero-specific color
-            mask, center = I.processColor(hsv_frame)
-            masks.append(mask)
-            # grab the green from this circle to indicate the forward direction
-            if (center is not None):
-                orientation_frame = cv2.bitwise_and(hsv_frame, hsv_frame, mask=mask)
-                green_mask, green_center = I_generic.processColor(orientation_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
-                # gray_blurred, circles = I_generic.detectCircle(orientation_frame)
-                if (green_center is not None):
-                    theta = atan2(-green_center[1] + center[1], green_center[0] - center[0]) # Image coords need to have y swapped
-                    # print(f"{I.sphero_id} theta: {theta:1.2f}")q
-                    cv2.line(frame, green_center, center, (255,0,0), 2)
-                    
-                    avg_center = ((center[0] + green_center[0])/2, (center[1] + green_center[1])/2)
-                    I.set_detected_position(avg_center[0], avg_center[1], theta)
-                    # if circles is not None:
-                    #     cv2.line(frame, (circles[0][0], circles[0][1], circles[0][2]), green_center, (255,0,0), 2)
-
-
-        color_mask = None
-        for mask in masks:
-            if (color_mask is None): color_mask = mask
-            else:
-                color_mask = cv2.bitwise_or(color_mask, mask)
-
-        # expandedBlue = I.getBluePreprocessed(frame)
-        # print(f"ORd {len(masks)} masks")
-        color_frame = cv2.bitwise_and(frame, frame, mask=color_mask)
-        # <<<<< Filter for all the spheros colors
+        if (TRACK_WITH_COLOR):
+            # >>>> Filter for all the spheros colors
+            global hsv_frame
+            hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            masks = []
+            for idx, I in enumerate(detectors_dict.values()):
+                # Get a circle around the sphero-specific color
+                mask, center = I.processColor(hsv_frame)
+                masks.append(mask)
+                # grab the green from this circle to indicate the forward direction
+                if (center is not None):
+                    orientation_frame = cv2.bitwise_and(hsv_frame, hsv_frame, mask=mask)
+                    green_mask, green_center = I_generic.processColor(orientation_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
+                    # gray_blurred, circles = I_generic.detectCircle(orientation_frame)
+                    if (green_center is not None):
+                        # print(f"Got green for {I.sphero_id}")
+                        theta = atan2(-green_center[1] + center[1], green_center[0] - center[0]) # Image coords need to have y swapped
+                        # print(f"{I.sphero_id} theta: {theta:1.2f}")q
+                        cv2.line(frame, green_center, center, (255,0,0), 2)
+                        
+                        avg_center = ((center[0] + green_center[0])/2, (center[1] + green_center[1])/2)
+                        I.set_detected_position(avg_center[0], avg_center[1], theta)
+                        # if circles is not None:
+                        #     cv2.line(frame, (circles[0][0], circles[0][1], circles[0][2]), green_center, (255,0,0), 2)
+            color_mask = None
+            for mask in masks:
+                if (color_mask is None): color_mask = mask
+                else:
+                    color_qmask = cv2.bitwise_or(color_mask, mask)
+            # expandedBlue = I.getBluePreprocessed(frame)
+            # print(f"ORd {len(masks)} masks")
+            color_frame = cv2.bitwise_and(frame, frame, mask=color_mask)
+            # <<<<< Filter for all the spheros colors
 
 
         # >>>>> Detect Circles and add to position estimate
-        # I_generic.read_image(color_frame)
-        # circle = I_generic.detectCircle()
+        if TRACK_WITH_CIRCLES:
+            gray_blurred, circles = I_generic.detectCircle(frame)
+            # circle_mask = np.zeros_like(frame)
+            height,width,depth = frame.shape
+            circle_masks = []
+            if circles is not None:
+                circles =  np.uint16(np.around(circles))
+                for c in circles[0, :]:
+                    circle_mask = np.zeros((height,width), np.uint8)
+                    cv2.circle(circle_mask, (c[0], c[1]), int(c[2]*1.1), (255,255,255), -1)
+                    circle_masks.append((circle_mask, (c[0], c[1])))
+
+            for mask, (x,y) in circle_masks:
+                circle_frame = cv2.bitwise_and(frame, frame, mask=mask)
+                circle_frame = cv2.cvtColor(circle_frame, cv2.COLOR_BGR2HSV)
+                green_mask, green_center = I_generic.processColor(circle_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
+                if (green_center is not None):
+                    print(green_center)
+                    cv2.line(frame, green_center, (x,y), (255,0,0), 2)
+
+
+            # Look for the green directions on the circles
+
         # <<<<< Detect Circles and add to position estimate
 
-        # cv2.imshow("circles", circle)
+        cv2.imshow("circles", circle_frame)
 
         if (SHOW_IMAGES):
             cv2.imshow("image", frame)
-            cv2.imshow("color", color_frame)
+            # cv2.imshow("color", color_frame)
+            # cv2.imshow("color0", masks[0])
+            # cv2.imshow("color1", masks[1])
+            # cv2.imshow("color2", masks[2])
+            # cv2.imshow("color3", masks[3])
             cv2.setMouseCallback('image', mouse_cb)
 
         if (SHOW_IMAGES and ekf_pose2d):
