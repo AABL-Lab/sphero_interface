@@ -5,7 +5,7 @@ Spoof file to produce fake sphero data for testing (written for transfer entropy
 @author james.staley625703@tufts.edu
 '''
 
-from cmath import pi
+from math import pi, cos, sin
 import traceback
 import rospy
 from std_msgs.msg import Float32
@@ -15,9 +15,11 @@ from tf.transformations import quaternion_from_euler
 import matplotlib.pyplot as plt
 import random
 
-TRAJECTORY_XYTHETA = [(0.01*i, 0.01*i, pi/4.) for i in range(100)]
+half_period = 25
+increment = 1./half_period
+TRAJECTORY_XYTHETA = [(increment*i, increment*i, pi/4.) for i in range(half_period)]
 TRAJECTORY_XYTHETA.extend([(1., 1., -3*pi/4.)])
-TRAJECTORY_XYTHETA.extend([(0.01*(100-i), 0.01*(100-i), -3*pi/4.) for i in range(100)])
+TRAJECTORY_XYTHETA.extend([(increment*(half_period-i), increment*(half_period-i), -3*pi/4.) for i in range(half_period)])
 
 T2 = [(0.01*(100-i), 0.01*(100-i), -3*pi/4.) for i in range(100)]
 T2.extend([(0., 0., pi/4.)])
@@ -60,7 +62,7 @@ def create_PWCS(x, y, theta):
 
 def main():
     rospy.init_node("spoof")
-    sphero_names = ["se8", "se9"]
+    sphero_names = ["se9", "se8"]
     pubs = [rospy.Publisher(f"/{name}_ekf/odom_combined", PoseWithCovarianceStamped, queue_size=10) for name in sphero_names]
     namespub = rospy.Publisher("/sphero_names", SpheroNames, queue_size=1, latch=True)
     namespub.publish(SpheroNames(sphero_names))
@@ -74,13 +76,29 @@ def main():
     ax.set_ylim(ax_range)
     ax.set_xlim(ax_range)
     ax.plot()
-    colors = ['r', 'b']
+    colors = ['b', 'darkorange']
     traj_idx = 0
+
+    random_update_period, random_update_counter = 10, 0
+    random_heading, random_vel = 0, 0
+    random_x, random_y, random_theta = 0, 0, 0 
+
     while not rospy.is_shutdown(): # do work
         ax.clear()
         for idx, publisher in enumerate(pubs):
             if (idx == 1):
-                point = create_PWCS(random.random(), random.random(), random.random()*2*pi)
+                random_update_counter += 1
+                if random_update_counter % random_update_period == 0:
+                    random_heading, random_vel = (random.random() * 2* pi, random.random() * 0.1)
+                # Random heading and forward velocity periodically
+                rx = random_x + (random_vel*cos(random_heading))
+                ry = random_y + (random_vel*sin(random_heading))
+                rx = max(min(1.0, rx), 0)
+                ry = max(min(1.0, ry), 0)
+                
+                rtheta = random_heading
+                point = create_PWCS(rx, ry, rtheta)
+                random_x, random_y = rx, ry
             else:
                 point = get_trajectory_pose(trajs[idx], traj_idx)
                 
@@ -93,6 +111,7 @@ def main():
         ax.set_title("Spoofed Sphero Positions")
         ax.set_ylim(ax_range)
         ax.set_xlim(ax_range)
+        ax.legend(sphero_names)
         fig.canvas.draw()
         fig.canvas.flush_events()
         rospy.sleep(0.1) # sleep for messages and interrupts
