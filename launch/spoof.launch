@@ -1,0 +1,9 @@
+<launch>
+    <!-- <node name="interface" pkg="sphero_interface" type="interface.py" output="screen"/>
+    <node name="tracker" pkg="sphero_interface" type="tracker.py"/> -->
+    <node name="spoof" pkg="sphero_interface" type="spoof.py"/>
+
+    <include file="$(find sphero_interface)/launch/ekf_only.launch">
+        <arg name="spoof_spheros" value="true"/>
+    </include>
+</launch>
