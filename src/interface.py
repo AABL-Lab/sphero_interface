@@ -19,6 +19,27 @@ import traceback
 import random
 from IPython import embed
 
+'''
+Wrapped Sphero wraps the subscribers and publishers for one sphero.
+Also publishes the last issued command for state tracking.
+Some statefullness around the connection.
+'''
+import signal
+from contextlib import contextmanager
+
+class TimeoutException(Exception): pass
+
+@contextmanager
+def time_limit(seconds):
+    def signal_handler(signum, frame):
+        raise TimeoutException("Timed out!")
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+
 
 IN_LAB = False if os.environ.get("IN_LAB") is None else True
 print(f"IN_LAB: {IN_LAB}")
@@ -45,6 +66,7 @@ spheros = {
     "F8:48:B1:E1:1E:2D": None,
 }
 
+MAX_CONNECTION_TRIES = 5
 ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
 
 SENSOR_READ = True
@@ -70,6 +92,8 @@ class WrappedSphero(Sphero):
         self.light_pub = rospy.Publisher(self.name+"/light", Float32, queue_size=1)
         self.ekf_orientation_pub = rospy.Publisher(self.name+"/imu_data", Imu, queue_size=1) # publish for the ekf node
         
+        self.n_tries = 0
+
         self.setup()
 
     def setup(self):
@@ -80,31 +104,30 @@ class WrappedSphero(Sphero):
             try:
                 self.ble_adapter = self._ble_adapter_cls(self.mac_address)
                 self.is_connected = True
-                rospy.loginfo(f"{self.name} connected.")
             except Exception as e:
                 # traceback.print_exc()
                 rospy.loginfo(f"{self.name} failed to connect.")
                 rospy.sleep(0.1)
         
         if (self.is_connected):
-            self.power.wake()
-            if not STABILIZE_SPHEROS: 
-                # This is silently broken, not sure why TODO
-                rospy.loginfo("Disabling sphero control system.")
-                self.driving.set_stabilization(StabilizationIndex.no_control_system)
-
-            # self.user_io.set_led_matrix_text_scrolling(string=self.name, color=Color(red=0xff))
-            r,g,b = Sphero_RGB_Color[self.name]
-            # for x in range(8):
-            #     for y in range(3):
-            #         self.user_io.set_led_matrix_pixel(Pixel(x,y), Color(red=r, green=g, blue=b))
-            # self.user_io.set_led_matrix_one_color(color=Color(red=r, green=g, blue=b))
-            rospy.sleep(0.05)
-            # self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=50), back_color=Color())
-            self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=GREEN_RGB[1]), back_color=Color(r,g,b))
+            try:
+                with time_limit(1):
+                    self.power.wake()
+                    if not STABILIZE_SPHEROS: 
+                        # This is silently broken, not sure why TODO
+                        rospy.loginfo("Disabling sphero control system.")
+                        self.driving.set_stabilization(StabilizationIndex.no_control_system)
+                    r,g,b = Sphero_RGB_Color[self.name]
+                    rospy.sleep(0.05)
+                    self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=GREEN_RGB[1]), back_color=Color(r,g,b))
+                    rospy.loginfo(f"{self.name} connected.")
+            except TimeoutException as e:
+                rospy.loginfo(f"{self.name} timed out during setup.")
+                self.is_connected = False
+                self.n_tries += 1
             # self.driving.reset_yaw()
         else:
-            print(f"WARN: {self.name} could not connect to bluetooth adapter.")
+            rospy.loginfo(f"WARN: {self.name} could not connect to bluetooth adapter.")
             self.is_connected = False
     
     def init_sensor_read(self):
@@ -174,11 +197,15 @@ class WrappedSphero(Sphero):
             print("forcing 0 velocity due to stale command.")
             self.cmd = HeadingStamped()
 
-        self.light_pub.publish(self.sensor.get_ambient_light_sensor_value())
-        self.driving.drive_with_heading(int(v), int(theta), Direction.forward)
+        try:
+            with time_limit(1):
+                self.light_pub.publish(self.sensor.get_ambient_light_sensor_value())
+                self.driving.drive_with_heading(int(v), int(theta), Direction.forward)
+        except TimeoutException as e:
+            rospy.loginfo(f"{self.name} timed out on step.")
 
 def main():
-    print("Starting sphero interface node")
+    rospy.loginfo("Starting sphero interface node")
     rospy.init_node("interface")
     connected_names_pub = rospy.Publisher("/sphero_names", SpheroNames, queue_size=1) # publish a list of the names of connected spheros
 
@@ -204,13 +231,12 @@ def main():
             try:
                 if (sphero.is_connected):
                     sphero.step()
-                else:
+                elif (sphero.n_tries < MAX_CONNECTION_TRIES):
                     sphero.reconnect()
             except Exception as e:
                 traceback.print_exc()
                 print(f"{mac_address} error: {e}")
         connected_names_pub.publish(SpheroNames(connected_sphero_names))
-        print(f"looping...")
         rospy.sleep(0.05)
 
     # Close out the blueooth adapters

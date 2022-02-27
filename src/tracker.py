@@ -8,6 +8,7 @@ Email: siddharthchandragzb@gmail.com
 from math import atan2, degrees
 from re import S
 import traceback
+from turtle import circle
 from IPython import embed
 
 import rospy
@@ -31,7 +32,7 @@ from TrackerParams import LOWER_GREEN, TRACK_WITH_CIRCLES, TRACK_WITH_COLOR, UPP
 
 SHOW_IMAGES = True
 
-EXPECTED_SPHERO_RADIUS = 20 # size of spheros in pixels
+EXPECTED_SPHERO_RADIUS = 40 # size of spheros in pixels
 circle_radiuses = dict()
 hsv_frame = None
 
@@ -218,22 +219,17 @@ def main():
                 if (center is not None):
                     orientation_frame = cv2.bitwise_and(hsv_frame, hsv_frame, mask=mask)
                     green_mask, green_center = I_generic.processColor(orientation_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
-                    # gray_blurred, circles = I_generic.detectCircle(orientation_frame)
                     if (green_center is not None):
-                        # print(f"Got green for {I.sphero_id}")
                         theta = atan2(-green_center[1] + center[1], green_center[0] - center[0]) # Image coords need to have y swapped
-                        # print(f"{I.sphero_id} theta: {theta:1.2f}")q
                         cv2.line(frame, green_center, center, (255,0,0), 2)
                         
                         avg_center = ((center[0] + green_center[0])/2, (center[1] + green_center[1])/2)
                         I.set_detected_position(avg_center[0], avg_center[1], theta)
-                        # if circles is not None:
-                        #     cv2.line(frame, (circles[0][0], circles[0][1], circles[0][2]), green_center, (255,0,0), 2)
             color_mask = None
             for mask in masks:
                 if (color_mask is None): color_mask = mask
                 else:
-                    color_qmask = cv2.bitwise_or(color_mask, mask)
+                    color_mask = cv2.bitwise_or(color_mask, mask)
             # expandedBlue = I.getBluePreprocessed(frame)
             # print(f"ORd {len(masks)} masks")
             color_frame = cv2.bitwise_and(frame, frame, mask=color_mask)
@@ -253,20 +249,29 @@ def main():
                     cv2.circle(circle_mask, (c[0], c[1]), int(c[2]*1.1), (255,255,255), -1)
                     circle_masks.append((circle_mask, (c[0], c[1])))
 
+            circle_frame = None
+            circle_mask = None
             for mask, (x,y) in circle_masks:
                 circle_frame = cv2.bitwise_and(frame, frame, mask=mask)
-                circle_frame = cv2.cvtColor(circle_frame, cv2.COLOR_BGR2HSV)
-                green_mask, green_center = I_generic.processColor(circle_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
+                circle_frame_hsv = cv2.cvtColor(circle_frame, cv2.COLOR_BGR2HSV)
+                green_mask, green_center = I_generic.processColor(circle_frame_hsv, lower=LOWER_GREEN, upper=UPPER_GREEN)
                 if (green_center is not None):
-                    print(green_center)
+                    # print(green_center)
                     cv2.line(frame, green_center, (x,y), (255,0,0), 2)
 
+                # for visualizing
+                if (circle_mask is None):
+                    circle_mask = mask
+                else:
+                    circle_mask = cv2.bitwise_or(circle_mask, mask)
 
             # Look for the green directions on the circles
+            if circle_mask is not None:
+                circle_frame = cv2.bitwise_and(frame, frame, mask=circle_mask)
+                cv2.imshow("circles", circle_frame)
 
         # <<<<< Detect Circles and add to position estimate
 
-        cv2.imshow("circles", circle_frame)
 
         if (SHOW_IMAGES):
             cv2.imshow("image", frame)
