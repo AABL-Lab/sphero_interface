@@ -26,33 +26,30 @@ YELLOW_RGB = (255, 255, 0)
 YELLOW_HSV = (165, 2, 255)
 
 GREEN_RGB = (0, 100, 0)
-GREEN_HSV = (82, 50, 200)
+GREEN_HSV = (82, 100, 200)
 
 # YELLOW_RGB = (0, 255, 255)
 # YELLOW_HSV = (30, 100, 240)
 
 sphero_ids = ["sd9", "sf8", "se9", "sf6", "sdc", "sec", "sca", "sfd", "sfb", "sd7", "sd1", "sc8", "scD", "sf0", "sc9"]
 
-if (TRACK_WITH_COLOR):
-    Sphero_RGB_Color = {
-        "sd9": RED_RGB,
-        "sf8": BLUE_RGB,
-        "se9": BLUE_RGB,
-        "sf6": RED_RGB,
-        "sdc": RED_RGB,
-        "sec": RED_RGB, # in lab
-        "sca": BLUE_RGB, # in lab
-        "sfd": RED_RGB,
-        "sfb": RED_RGB,
-        "sd7": RED_RGB,
-        "sd1": MAGENTA_RGB, # in lab
-        "sc8": YELLOW_RGB, # in lab
-        "scD": RED_RGB,
-        "sf0": RED_RGB,
-        "sc9": RED_RGB,
-    }
-else:
-    Sphero_RGB_Color = {key: (0,0,0) for key in sphero_ids}
+Sphero_RGB_Color = {
+    "sd9": RED_RGB, # jss home
+    "sf8": BLUE_RGB, # jss home
+    "se9": BLUE_RGB,
+    "sf6": RED_RGB,
+    "sdc": RED_RGB,
+    "sec": RED_RGB, # in lab
+    "sca": BLUE_RGB, # in lab
+    "sfd": RED_RGB,
+    "sfb": RED_RGB,
+    "sd7": RED_RGB,
+    "sd1": MAGENTA_RGB, # in lab
+    "sc8": YELLOW_RGB, # in lab
+    "scD": RED_RGB,
+    "sf0": RED_RGB,
+    "sc9": RED_RGB,
+}
 
 # How the colors appear (done by hand)
 Sphero_HSV_Color = dict()

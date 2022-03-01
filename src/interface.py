@@ -64,11 +64,11 @@ spheros = {
     # "F0:35:04:88:07:76": None,
     # "C9:B4:EF:32:EC:28": None,
 } if IN_LAB else {
+    # "F8:48:B1:E1:1E:2D": None,
     "D9:81:9E:B8:AD:DB": None,
-    "F8:48:B1:E1:1E:2D": None,
 }
 
-MAX_CONNECTION_TRIES = 5
+MAX_CONNECTION_TRIES = 3
 ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
 
 SENSOR_READ = True
@@ -102,54 +102,38 @@ class WrappedSphero(Sphero):
         t0 = time()
         self.sensors_setup = False
         self.is_connected = False # TODO: This should be calling a ble_adapter method to check
-        while (not self.is_connected and time() - t0 < 1.): # Try to connect for a little bit (one second)
-            try:
-                self.ble_adapter = self._ble_adapter_cls(self.mac_address)
-                self.is_connected = True
-            except Exception as e:
-                # traceback.print_exc()
-                rospy.loginfo(f"{self.name} failed to connect.")
-                rospy.sleep(0.1)
-        
-        if (self.is_connected):
-            try:
-                with time_limit(1):
-                    self.power.wake()
-                    if not STABILIZE_SPHEROS: 
-                        # This is silently broken, not sure why TODO
-                        rospy.loginfo("Disabling sphero control system.")
-                        self.driving.set_stabilization(StabilizationIndex.no_control_system)
-                    r,g,b = Sphero_RGB_Color[self.name]
-                    rospy.sleep(0.05)
-                    self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=GREEN_RGB[1]), back_color=Color(r,g,b))
-                    rospy.loginfo(f"{self.name} connected.")
-            except TimeoutException as e:
+        try:
+            self.ble_adapter = self._ble_adapter_cls(self.mac_address)
+            with time_limit(5):
+                self.power.wake()
+                if not STABILIZE_SPHEROS: 
+                    # This is silently broken, not sure why TODO
+                    rospy.loginfo("Disabling sphero control system.")
+                    self.driving.set_stabilization(StabilizationIndex.no_control_system)
+                r,g,b = Sphero_RGB_Color[self.name]
+                self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=GREEN_RGB[1]), back_color=Color(r,g,b))
+                print(f"{self.name} Setting matrix to: {r},{g},{b}")
+                self.user_io.set_led_matrix_one_color(Color(red=r,green=g,blue=b))
+            rospy.loginfo(f"{self.name} connected.")
+            self.is_connected = True
+        except Exception as e:
+            self.n_tries += 1
+            if (e is TimeoutException):
                 rospy.loginfo(f"{self.name} timed out during setup.")
-                self.is_connected = False
-                self.n_tries += 1
-            # self.driving.reset_yaw()
-        else:
-            rospy.loginfo(f"WARN: {self.name} could not connect to bluetooth adapter.")
-            self.is_connected = False
+            else:
+                traceback.print_exc()
+                rospy.loginfo(f"{self.name} failed to connect.")
+        
     
     def init_sensor_read(self):
         if not (SENSOR_READ): return # don't care about sensors 
-        try:
-            # for sensor_type in ACTIVE_SENSORS:
-            self.sensor.set_notify(self.sensor_bt_cb, *ACTIVE_SENSORS)
-            self.sensors_setup = True  
-        except:
-            print("WARN: Could not connect to sensors for "+self.name)
-            self.sensors_setup = False
-
-    def reconnect(self):
-        try:
-            self.setup()
-            self.init_sensor_read()
-            return True
-        except Exception as e:
-            print(f"{self.name} failed to reconnect.")
-            return False
+        with time_limit(1):
+            try:
+                self.sensor.set_notify(self.sensor_bt_cb, *ACTIVE_SENSORS)
+                self.sensors_setup = True  
+            except TimeoutException as e:
+                self.sensors_setup = False
+                rospy.loginfo(f"{self.name} sensor init timed out.")
 
     def cmd_cb(self, heading_magnitude_cmd):
         '''
@@ -190,16 +174,19 @@ class WrappedSphero(Sphero):
         # print(f"{self.name} {r:1.1f} {p:1.1f} {y:1.1f}")
 
     def step(self):
-        if not self.sensors_setup: self.init_sensor_read()
         if not self.is_connected: 
             print(f"Not connected to {self.name}.")
             return
+
+        if not self.sensors_setup: self.init_sensor_read()
 
         # cap inputs
         t, v, theta = self.cmd.t, self.cmd.v, self.cmd.theta
         if (time() - t > 3.0 and v > 0):
             print("forcing 0 velocity due to stale command.")
             self.cmd = HeadingStamped()
+        else:
+            rospy.loginfo(f"{self.name} sending command: {v:1.2f} {theta:1.2f}")
 
         try:
             with time_limit(1):
@@ -228,16 +215,16 @@ def main():
             print(f"WARN: Could not connect to sphero {ma}: {e}")
             traceback.print_exc()
 
-
     update_names = True
     while not rospy.is_shutdown():
+        rospy.sleep(0.05)
         for mac_address, sphero in spheros.items():
             if not sphero: continue
             try:
                 if (sphero.is_connected):
                     sphero.step()
                 elif (sphero.n_tries < MAX_CONNECTION_TRIES):
-                    sphero.reconnect()
+                    sphero.setup()
             except Exception as e:
                 traceback.print_exc()
                 print(f"{mac_address} error: {e}")
@@ -246,7 +233,6 @@ def main():
             connected_names_pub.publish(SpheroNames(connected_sphero_names))
             update_names = False
 
-        rospy.sleep(0.05)
 
     # Close out the blueooth adapters
     for sphero in spheros.values():

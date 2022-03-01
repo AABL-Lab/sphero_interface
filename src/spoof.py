@@ -7,6 +7,7 @@ Spoof file to produce fake sphero data for testing (written for transfer entropy
 
 from math import pi, cos, sin
 import traceback
+from plot_state import plot_spheros
 import rospy
 from std_msgs.msg import Float32
 from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped
@@ -58,7 +59,7 @@ def create_PWCS(x, y, theta):
     p.pose.pose.orientation.y = q[1]
     p.pose.pose.orientation.z = q[2]
     p.pose.pose.orientation.w = q[3]
-    return p
+    return p, (x,y,theta)
 
 def main():
     rospy.init_node("spoof")
@@ -67,24 +68,13 @@ def main():
     namespub = rospy.Publisher("/sphero_names", SpheroNames, queue_size=1, latch=True)
     namespub.publish(SpheroNames(sphero_names))
 
-    ax_range = [-0.05, 1.05]
-    plt.ion()
-    fig, ax = plt.subplots()
-    ax.set_title("Spoofed Sphero Positions")
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_ylim(ax_range)
-    ax.set_xlim(ax_range)
-    ax.plot()
-    colors = ['b', 'darkorange']
     traj_idx = 0
-
     random_update_period, random_update_counter = 10, 0
     random_heading, random_vel = 0, 0
     random_x, random_y, random_theta = 0, 0, 0 
 
     while not rospy.is_shutdown(): # do work
-        ax.clear()
+        xythetas = []
         for idx, publisher in enumerate(pubs):
             if (idx == 1):
                 random_update_counter += 1
@@ -97,23 +87,17 @@ def main():
                 ry = max(min(1.0, ry), 0)
                 
                 rtheta = random_heading
-                point = create_PWCS(rx, ry, rtheta)
+                point, xytheta = create_PWCS(rx, ry, rtheta)
                 random_x, random_y = rx, ry
             else:
-                point = get_trajectory_pose(trajs[idx], traj_idx)
-                
+                point, xytheta = get_trajectory_pose(trajs[idx], traj_idx)
+            xythetas.append(xytheta)
+
             publisher.publish(point)
-            ax.scatter(point.pose.pose.position.x, point.pose.pose.position.y, c=colors[idx])
         traj_idx = traj_idx + 1
         if (traj_idx >= len(trajs[0])):
             traj_idx = 0
-
-        ax.set_title("Spoofed Sphero Positions")
-        ax.set_ylim(ax_range)
-        ax.set_xlim(ax_range)
-        ax.legend(sphero_names)
-        fig.canvas.draw()
-        fig.canvas.flush_events()
+        plot_spheros(xythetas, sphero_names)
         rospy.sleep(0.1) # sleep for messages and interrupts
 
 
