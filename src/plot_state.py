@@ -14,14 +14,11 @@ import matplotlib.path as mpath
 
 plt.ion()
 fig, ax = plt.subplots()
-ax_range = [-0.05, 1.05]
 ax.set_title("Sphero Positions")
 ax.set_xlabel("X")
 ax.set_ylabel("Y")
-ax.set_ylim(ax_range)
-ax.set_xlim(ax_range)
 ax.plot()
-colors = ['b', 'darkorange']
+colors = ['b', 'darkorange', 'r']
 
 SCALE = 1
 marker_path = [(SCALE*x, SCALE*y) for (x,y) in 
@@ -34,7 +31,7 @@ oriented_marker = mpath.Path(
     # [mpath.Path.MOVETO, mpath.Path.LINETO, mpath.Path.LINETO, mpath.Path.LINETO, mpath.Path.CLOSEPOLY])
     [mpath.Path.MOVETO, mpath.Path.LINETO, mpath.Path.LINETO, mpath.Path.CLOSEPOLY])
 
-def plot_spheros(sphero_xythetas, sphero_ids):
+def plot_spheros(sphero_xythetas, sphero_ids, ax_x_range=[-0.05, 1.05], ax_y_range=[-0.05, 1.05]):
         ax.clear()
         xs = [x for x,y,theta in sphero_xythetas]
         ys = [y for x,y,theta in sphero_xythetas]
@@ -44,8 +41,8 @@ def plot_spheros(sphero_xythetas, sphero_ids):
             ax.scatter(x, y, marker=marker, s=500, c=colors[idx])
 
         ax.set_title("Spoofed Sphero Positions")
-        ax.set_ylim(ax_range)
-        ax.set_xlim(ax_range)
+        ax.set_ylim(ax_y_range)
+        ax.set_xlim(ax_x_range)
         ax.legend(sphero_ids)
         fig.canvas.draw()
         fig.canvas.flush_events()

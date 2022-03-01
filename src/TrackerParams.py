@@ -12,24 +12,20 @@ class TrackerParams(NamedTuple):
 TRACK_WITH_COLOR = False
 TRACK_WITH_CIRCLES = not TRACK_WITH_COLOR
 
-
 BLUE_RGB = (0, 0, 100)
-BLUE_HSV = (110,100,250)
+BLUE_HSV = (110, 100, 250)
 
 RED_RGB = (130, 0, 0)
 RED_HSV = (170, 170, 200)
 
-MAGENTA_RGB = (255, 0, 255)
-MAGENTA_HSV = (130, 110, 200)
+MAGENTA_RGB = (100, 0, 100)
+MAGENTA_HSV = (130, 70, 200)
 
-YELLOW_RGB = (255, 255, 0)
+YELLOW_RGB = (100, 100, 0)
 YELLOW_HSV = (165, 2, 255)
 
-GREEN_RGB = (0, 100, 0)
-GREEN_HSV = (82, 100, 200)
-
-# YELLOW_RGB = (0, 255, 255)
-# YELLOW_HSV = (30, 100, 240)
+GREEN_RGB = (0, 25, 0)
+GREEN_HSV = (82, 10, 200)
 
 sphero_ids = ["sd9", "sf8", "se9", "sf6", "sdc", "sec", "sca", "sfd", "sfb", "sd7", "sd1", "sc8", "scD", "sf0", "sc9"]
 
@@ -54,16 +50,11 @@ Sphero_RGB_Color = {
 # How the colors appear (done by hand)
 Sphero_HSV_Color = dict()
 for sphero_id, color in Sphero_RGB_Color.items():
-    if (color == RED_RGB):
-        Sphero_HSV_Color[sphero_id] = RED_HSV
-    elif (color == BLUE_RGB):
-        Sphero_HSV_Color[sphero_id] = BLUE_HSV
-    elif (color == YELLOW_RGB):
-        Sphero_HSV_Color[sphero_id] = YELLOW_HSV
-    elif (color == MAGENTA_RGB):
-        Sphero_HSV_Color[sphero_id] = MAGENTA_HSV
-    else:
-        Sphero_HSV_Color[sphero_id] = (0,0,0)
+    if (color == RED_RGB): Sphero_HSV_Color[sphero_id] = RED_HSV
+    elif (color == BLUE_RGB): Sphero_HSV_Color[sphero_id] = BLUE_HSV
+    elif (color == YELLOW_RGB): Sphero_HSV_Color[sphero_id] = YELLOW_HSV
+    elif (color == MAGENTA_RGB): Sphero_HSV_Color[sphero_id] = MAGENTA_HSV
+    else: Sphero_HSV_Color[sphero_id] = (0,0,0)
     
 Sphero_Params_by_ID = {
     "sd9": TrackerParams(hsv_lower=(0, 0, 0), hsv_upper=(255, 255, 255)),

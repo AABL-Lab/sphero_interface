@@ -58,7 +58,7 @@ spheros = {
     # "FB:E7:20:44:74:E4": None,
     # "D7:98:82:CD:1F:EA": None,
     "D1:FC:A0:92:D5:19": None,
-    "C8:2E:9A:E9:37:16": None,
+    # "C8:2E:9A:E9:37:16": None,
     # "D1:7E:07:ED:D1:37": None,
     # "CD:7D:FA:67:54:AB": None,
     # "F0:35:04:88:07:76": None,
@@ -111,7 +111,7 @@ class WrappedSphero(Sphero):
                     rospy.loginfo("Disabling sphero control system.")
                     self.driving.set_stabilization(StabilizationIndex.no_control_system)
                 r,g,b = Sphero_RGB_Color[self.name]
-                self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=GREEN_RGB[1]), back_color=Color(r,g,b))
+                self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=GREEN_RGB[1]), back_color=Color(0,0,0)) #Color(r,g,b))
                 print(f"{self.name} Setting matrix to: {r},{g},{b}")
                 self.user_io.set_led_matrix_one_color(Color(red=r,green=g,blue=b))
             rospy.loginfo(f"{self.name} connected.")
