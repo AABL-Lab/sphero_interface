@@ -13,19 +13,22 @@ TRACK_WITH_COLOR = False
 TRACK_WITH_CIRCLES = not TRACK_WITH_COLOR
 
 BLUE_RGB = (0, 0, 100)
-BLUE_HSV = (110, 100, 250)
+BLUE_HSV = (100, 100, 250)
 
 RED_RGB = (130, 0, 0)
 RED_HSV = (170, 170, 200)
 
 MAGENTA_RGB = (100, 0, 100)
-MAGENTA_HSV = (130, 70, 200)
+MAGENTA_HSV = (140, 70, 200)
 
 YELLOW_RGB = (100, 100, 0)
 YELLOW_HSV = (165, 2, 255)
 
-GREEN_RGB = (0, 25, 0)
+GREEN_RGB = (0, 20, 0)
 GREEN_HSV = (82, 10, 200)
+
+WHITE_RGB = (10, 10, 10)
+WHITE_HSV = (0, 0, 255)
 
 sphero_ids = ["sd9", "sf8", "se9", "sf6", "sdc", "sec", "sca", "sfd", "sfb", "sd7", "sd1", "sc8", "scD", "sf0", "sc9"]
 
@@ -94,3 +97,7 @@ for k,v in Sphero_Params_by_ID.items():
 hsv = GREEN_HSV
 LOWER_GREEN = (max(0, hsv[0] - hue_range), max(0, hsv[1] - sat_range), max(0, hsv[2] - val_range))
 UPPER_GREEN = (min(255, hsv[0] + hue_range), min(255, hsv[1] + sat_range), min(255, hsv[2] + val_range)) 
+
+hsv = WHITE_HSV
+LOWER_WHITE = (max(0, hsv[0] - hue_range), max(0, hsv[1] - sat_range), max(0, hsv[2] - val_range))
+UPPER_WHITE = (min(255, hsv[0] + hue_range), min(255, hsv[1] + sat_range), min(255, hsv[2] + val_range)) 

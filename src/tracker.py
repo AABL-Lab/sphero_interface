@@ -11,6 +11,7 @@ import traceback
 from turtle import circle
 from IPython import embed
 from plot_state import plot_spheros
+from itertools import permutations
 
 import rospy
 from std_msgs.msg import Float32
@@ -29,7 +30,7 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 '''
 Dictionary of Sphero Names (keys) and their corresponding colors (values)
 '''
-from TrackerParams import LOWER_GREEN, TRACK_WITH_CIRCLES, TRACK_WITH_COLOR, UPPER_GREEN, Sphero_Params_by_ID, Sphero_HSV_Color
+from TrackerParams import LOWER_GREEN, TRACK_WITH_CIRCLES, TRACK_WITH_COLOR, UPPER_GREEN, Sphero_Params_by_ID, Sphero_HSV_Color, Sphero_RGB_Color, TrackerParams, LOWER_WHITE, UPPER_WHITE
 
 VERBOSE = True
 SHOW_IMAGES = True
@@ -71,7 +72,7 @@ class VisionDetect:
         # gray_blurred = grayimage
         
         # Apply Hough transform on the blurred image.
-        circles = cv2.HoughCircles(gray_blurred,cv2.HOUGH_GRADIENT, 1, minDist=EXPECTED_SPHERO_RADIUS, param1=20, param2=15,
+        circles = cv2.HoughCircles(gray_blurred,cv2.HOUGH_GRADIENT, 1, minDist=EXPECTED_SPHERO_RADIUS*1.2, param1=20, param2=15,
             minRadius=int(0.9*EXPECTED_SPHERO_RADIUS),
             maxRadius=int(1.1*EXPECTED_SPHERO_RADIUS))
 
@@ -120,7 +121,6 @@ class VisionDetect:
         theta = sum(self.theta_smoother)/len(self.theta_smoother)
         # if VERBOSE:
         #     rospy.loginfo(f"{self.sphero_id}: Detected position: {x_img}, {y_img}, {theta}")
-
 
         self.last_detected_color_pose = (x_img, y_img, theta)
         self.last_detected_color_ts = rospy.get_time()
@@ -199,6 +199,7 @@ def get_id_from_dominant_color(masked_hsv, possible_ids: list):
 
 def get_average_hue(img_hsv):
     hues = img_hsv[:,:,0].flatten()
+    hues = hues[hues > 70]
     return np.mean(hues[np.nonzero(hues)])
 
 # Given the dominant color, which sphero is it?
@@ -212,17 +213,7 @@ def main():
 
     if (SHOW_IMAGES):
         cv2.namedWindow('image', cv2.WINDOW_NORMAL)
-        # cv2.namedWindow('color', cv2.WINDOW_NORMAL)
-        # cv2.namedWindow('tracked', cv2.WINDOW_NORMAL)
         cv2.moveWindow('image', 0, 0)
-        # cv2.moveWindow('color', 750, 0)
-
-        # cv2.namedWindow('color0', cv2.WINDOW_NORMAL)
-        # cv2.namedWindow('color1', cv2.WINDOW_NORMAL)
-        # cv2.namedWindow('color2', cv2.WINDOW_NORMAL)
-        # cv2.namedWindow('color3', cv2.WINDOW_NORMAL)
-
-        # cv2.moveWindow('tracked', 600, 500)
 
     # >>>> Open Video Stream
     video = cv2.VideoCapture(-1) # for using CAM
@@ -243,39 +234,10 @@ def main():
             print('Couldnt read frame')
             continue
 
-        global frame_hsv
-        if (TRACK_WITH_COLOR):
-            # >>>> Filter for all the spheros colors
-            frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            masks = []
-            for idx, I in enumerate(detectors_dict.values()):
-                # Get a circle around the sphero-specific color
-                mask, center = I.processColor(frame_hsv)
-                masks.append(mask)
-                # grab the green from this circle to indicate the forward direction
-                if (center is not None):
-                    orientation_frame = cv2.bitwise_and(frame_hsv, frame_hsv, mask=mask)
-                    green_mask, green_center = I_generic.processColor(orientation_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
-                    if (green_center is not None):
-                        theta = atan2(-green_center[1] + center[1], green_center[0] - center[0]) # Image coords need to have y swapped
-                        cv2.line(frame, green_center, center, (255,0,0), 2)
-                        
-                        avg_center = ((center[0] + green_center[0])/2, (center[1] + green_center[1])/2)
-                        I.set_detected_position(avg_center[0], avg_center[1], theta)
-            color_mask = None
-            for mask in masks:
-                if (color_mask is None): color_mask = mask
-                else:
-                    color_mask = cv2.bitwise_or(color_mask, mask)
-            # expandedBlue = I.getBluePreprocessed(frame)
-            # print(f"ORd {len(masks)} masks")
-            color_frame = cv2.bitwise_and(frame, frame, mask=color_mask)
-            # <<<<< Filter for all the spheros colors
-
-
         '''
         Mask each detected circle, check what color the grid is, and update the corresponding sphero
         '''
+        global frame_hsv
         if TRACK_WITH_CIRCLES:
             frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             gray_blurred, circles = I_generic.detectCircle(frame)
@@ -286,6 +248,7 @@ def main():
             if circles is not None:
                 circles =  np.uint16(np.around(circles))
                 for c in circles[0, :]:
+                    # print(f"    {c}")
                     circle_mask = np.zeros((height,width), np.uint8)
                     cv2.circle(circle_mask, (c[0], c[1]), int(c[2]*1.1), (255,255,255), -1)
                     circle_masks.append((circle_mask, (c[0], c[1])))
@@ -295,68 +258,88 @@ def main():
                     inner_circle_masks.append((inner_circle_mask, (c[0], c[1])))
 
                 circle_mask_viz = None
+                inner_circle_mask_viz = None
                 green_centers = []
                 circle_centers = []
                 avg_hues = []
+
+                for_viz = []
 
                 for (mask, (x,y)), (inner_mask, _) in zip(circle_masks, inner_circle_masks):
                 # for mask, (x,y) in circle_masks:
                     circle_frame = cv2.bitwise_and(frame_hsv, frame_hsv, mask=mask)
                     green_mask, green_center = I_generic.processColor(circle_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
-                    if (green_center is not None):
+                    # green_mask, green_center = I_generic.processColor(circle_frame, lower=LOWER_WHITE, upper=UPPER_WHITE)
+                    h = get_average_hue(cv2.bitwise_and(frame_hsv, frame_hsv, mask=inner_mask))
+                    if (green_center is not None) and h > 70:
                         cv2.line(frame, green_center, (x,y), (255,0,0), 2)
-
-                    green_centers.append(green_center)
-                    circle_centers.append((x,y))
-                    avg_hues.append(get_average_hue(cv2.bitwise_and(frame_hsv, frame_hsv, mask=inner_mask)))
-                    
+                        green_centers.append(green_center)
+                        circle_centers.append((x,y))
+                        avg_hues.append(h)
+                        for_viz.append(inner_mask)
 
                     # for visualizing
                     if (circle_mask_viz is None):
                         circle_mask_viz = mask
-                        # circle_mask_viz = inner_mask
+                        inner_circle_mask_viz = inner_mask
                     else:
                         circle_mask_viz = cv2.bitwise_or(circle_mask_viz, mask)
-                        # circle_mask_viz = cv2.bitwise_or(circle_mask_viz, inner_mask)
+                        inner_circle_mask_viz = cv2.bitwise_or(inner_circle_mask_viz, inner_mask)
 
 
-                # now we have a set of detections, and a set of colors, and we have to make the best possible pairings. This is definitely a specific CS problem that has a known solution that I do not know.
-                # There's n**2 possible combos, but for small n lets just brute force it and pick the best one. 
-                possible_keys = list(detectors_dict.keys())
-                for green_center, (inner_mask, (x,y)) in zip(green_centers, inner_circle_masks):
-                    if (green_center is not None):
-                        # Given the mask, whats the dominant color in expected led grid region?
-                        id, avg_hue, avg_sat = get_id_from_dominant_color(, possible_keys)
-                        
-                        if VERBOSE: rospy.loginfo(f"{avg_hue:1.1f} {avg_sat:1.1f} at {x:1.1f}, {y:1.1f} assigned {id}")
-                        if (id is not None):
-                            possible_keys.remove(id)
-                            # pair the average colors to their ids
-                            I = detectors_dict[id]
-                            theta = atan2(-green_center[1] + y, green_center[0] - x) # Image coords need to have y swapped
-                            I.set_detected_position(x, y, theta)
+                '''
+                Now we have a set of detections, and a set of colors, and we have to make the best possible pairings. This is definitely a specific CS problem that has a known solution that I do not know.
+                There's n**2 possible combos, but for small n lets just brute force it and pick the best one. 
+                '''
+                # print(f"{min(avg_hues):1.1f}")
+                # NOTE: SO CONVOLUTED :(
+                if len(avg_hues) == len(detectors_dict.keys()): # Only update when we see everyone (to avoid swapping)
+                    # print(f"Trying to match {avg_hues} with {detectors_dict.keys()}")
+                    # possible_keys = list(detectors_dict.keys())
+                    # all_sphero_id_permutations = permutations(possible_keys)
+                    # winning_permutation = None
+                    # winning_score = float("inf") # low score is better
+                    # print("==============================")
+                    # for permutation in all_sphero_id_permutations:
+                    #     score = 0
+                    #     for avg_hue, sphero_id in zip(avg_hues, permutation):
+                    #         score += abs(avg_hue - Sphero_HSV_Color[sphero_id][0])
+                    #         print(f"{Sphero_HSV_Color[sphero_id][0]:1.1f}: {avg_hue:1.1f}")
+                    #     if (score < winning_score):
+                    #         print("WINNER")
+                    #         winning_score = score
+                    #         winning_permutation = permutation
+                    #         # print(f"Winning permutation: {winning_permutation}")
 
+                    # even simpler, just order them by hue
+                    sorted_hues = sorted(zip(avg_hues, circle_centers, green_centers), key=lambda x: x[0])
+                    sorted_ids = sorted(zip(detectors_dict.keys(), [Sphero_HSV_Color[key] for key in detectors_dict.keys()]), key=lambda x: x[1][0])
+                    # now we should have centers and sphero ids ordered from least hue (observers and expected, respectively) to most hue
+                    for (hue, (centerx, centery), (greenx, greeny)), (sphero_id, _) in zip(sorted_hues, sorted_ids):
+                        theta = atan2(-greeny + centery, greenx - centerx) # Image coords need to have y swapped
+                        # print(f"{sphero_id}: matched to {hue:1.1f}. Pose: {centerx:1.0f}, {centery:1.0f}, {theta:1.2f}. Green: {greenx:1.0f}, {greeny:1.0f} - ")
+                        detectors_dict[sphero_id].set_detected_position(centerx, centery, theta)
+                    # print("="*20)
+                    ''''''
+                else: # TODO
+                    pass
 
                 # Look for the green directions on the circles
                 if circle_mask_viz is not None:
                     circle_frame = cv2.bitwise_and(frame, frame, mask=circle_mask_viz)
+                    inner_circle_frame = cv2.bitwise_and(frame, frame, mask=inner_circle_mask_viz)
                     cv2.imshow("circles", circle_frame)
+                    cv2.imshow("inner_circles", inner_circle_frame)
         ''''''
 
 
         if (SHOW_IMAGES):
             cv2.imshow("image", frame)
-            # cv2.imshow("color", color_frame)
-            # cv2.imshow("color0", masks[0])
-            # cv2.imshow("color1", masks[1])
-            # cv2.imshow("color2", masks[2])
-            # cv2.imshow("color3", masks[3])
             cv2.setMouseCallback('image', mouse_cb)
 
         if (SHOW_IMAGES and ekf_pose2d):
             efk_frame = frame.copy()
             for sphero_id, (x,y,theta) in ekf_pose2d.items():
-                # rospy.loginfo(f"{sphero_id} {x:1.2f}, {y:1.2f}")
                 if (x > 0 and y > 0):
                     cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
                     draw_theta = theta
@@ -367,7 +350,7 @@ def main():
             cv2.imshow("tracked", efk_frame)
 
         # Plot spheros NOTE: Out of place, should be its own node probably
-        plot_spheros([ekf_pose2d[key] for key in ekf_pose2d.keys()], [key for key in ekf_pose2d.keys()], ax_x_range=[0, frame.shape[0]], ax_y_range=[frame.shape[1], 0])
+        plot_spheros([ekf_pose2d[key] for key in ekf_pose2d.keys()], [key for key in ekf_pose2d.keys()], ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])
 
         # >>>> convert image coordinates to scene coordinates
         # TODO: Connect to each individual sphero's ekf node (if resources allow)

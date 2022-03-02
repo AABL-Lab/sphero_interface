@@ -74,7 +74,7 @@ ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
 SENSOR_READ = True
 STABILIZE_SPHEROS = False
 
-from TrackerParams import GREEN_RGB, Sphero_RGB_Color
+from TrackerParams import GREEN_RGB, WHITE_RGB, Sphero_RGB_Color
 '''
 Wrapped Sphero wraps the subscribers and publishers for one sphero.
 Also publishes the last issued command for state tracking.
@@ -111,7 +111,8 @@ class WrappedSphero(Sphero):
                     rospy.loginfo("Disabling sphero control system.")
                     self.driving.set_stabilization(StabilizationIndex.no_control_system)
                 r,g,b = Sphero_RGB_Color[self.name]
-                self.user_io.set_all_leds_8_bit_mask(front_color=Color(green=GREEN_RGB[1]), back_color=Color(0,0,0)) #Color(r,g,b))
+                # self.user_io.set_all_leds_8_bit_mask(front_color=Color(*WHITE_RGB), back_color=Color(0,0,0)) #Color(r,g,b))
+                self.user_io.set_all_leds_8_bit_mask(front_color=Color(*GREEN_RGB), back_color=Color(0,0,0)) #Color(r,g,b))
                 print(f"{self.name} Setting matrix to: {r},{g},{b}")
                 self.user_io.set_led_matrix_one_color(Color(red=r,green=g,blue=b))
             rospy.loginfo(f"{self.name} connected.")

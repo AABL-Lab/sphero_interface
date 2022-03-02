@@ -12,6 +12,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.path as mpath
 
+from TrackerParams import Sphero_RGB_Color
+
 plt.ion()
 fig, ax = plt.subplots()
 ax.set_title("Sphero Positions")
@@ -38,7 +40,8 @@ def plot_spheros(sphero_xythetas, sphero_ids, ax_x_range=[-0.05, 1.05], ax_y_ran
         thetas = [theta for x,y,theta in sphero_xythetas]
         for idx, (x,y,theta) in enumerate(sphero_xythetas):
             marker = oriented_marker.transformed(mpl.transforms.Affine2D().rotate(theta))
-            ax.scatter(x, y, marker=marker, s=500, c=colors[idx])
+            # ax.scatter(x, y, marker=marker, s=500, c=colors[idx])
+            ax.scatter(x, y, marker=marker, s=500, c=[entry/255. for entry in Sphero_RGB_Color[sphero_ids[idx]]])
 
         ax.set_title("Spoofed Sphero Positions")
         ax.set_ylim(ax_y_range)
