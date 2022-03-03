@@ -7,7 +7,7 @@ Simple sphero commander
 
 import traceback
 from copy import deepcopy
-import time, math
+import time, math, random
 
 from numpy import rad2deg
 from IPython import embed
@@ -137,8 +137,19 @@ class Commander():
         command_history.append(cmd)
         self.pub.publish(cmd)
 
+    def random_orientation(self):
+        '''
+        Randomly orient the sphero
+        '''
+        cmd = HeadingStamped()
+        cmd.v = 0
+        cmd.theta = random.randint(0, 360)
+        
+        self.pub.publish(cmd)
+
     def step(self):
-        self.trajectory_step()
+        self.random_orientation()
+        # self.trajectory_step()
 
     def ekf_callback(self, msg):
         euler = euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
@@ -178,7 +189,7 @@ def main_group():
             #     for cmd, pose in zip(command_history, pose_history):
             #         print(f"{cmd.t:1.2f}s {cmd.v} {cmd.theta} -> {pose.x:1.2f} {pose.y:1.2f} {pose.theta:1.2f}")
             #     break
-        rospy.sleep(0.05) # sleep for messages and interrupts
+        rospy.sleep(1.0) # sleep for messages and interrupts
 
 '''
 Run the single commander to control on sphero.

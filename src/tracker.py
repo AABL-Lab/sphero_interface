@@ -352,8 +352,11 @@ def main():
         # Plot spheros NOTE: Out of place, should be its own node probably
         plot_spheros([ekf_pose2d[key] for key in ekf_pose2d.keys()], [key for key in ekf_pose2d.keys()], ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])
 
+
         # >>>> convert image coordinates to scene coordinates
         # TODO: Connect to each individual sphero's ekf node (if resources allow)
+        # pose_imgs = []
+        # sphero_ids = []
         for I in detectors_dict.values():
             pose_img = I.last_detected_color_pose
             if pose_img is not None:
@@ -374,6 +377,9 @@ def main():
                 # rospy.loginfo(f"{I.sphero_id} publishing odom msg {odom_msg}")
                 I.odom_pub.publish(odom_msg)
                 I.last_detected_color_pose = None
+        #         pose_imgs.append(pose_img)
+        #         sphero_ids.append(I.sphero_id)
+        # plot_spheros(pose_imgs, sphero_ids, ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])
         # <<<< convert image coordinates to scene coordinates
 
         # Exit if ESC pressed
