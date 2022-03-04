@@ -142,7 +142,7 @@ class Commander():
         Randomly orient the sphero
         '''
         cmd = HeadingStamped()
-        cmd.v = 0
+        cmd.v = 10
         cmd.theta = random.randint(0, 360)
         
         self.pub.publish(cmd)

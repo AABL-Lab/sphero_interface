@@ -197,10 +197,12 @@ def get_id_from_dominant_color(masked_hsv, possible_ids: list):
 
     return closest_id, mean_hue, mean_sat
 
-def get_average_hue(img_hsv):
+def get_average_hsv(img_hsv):
     hues = img_hsv[:,:,0].flatten()
+    saturations = img_hsv[:,:,1].flatten()
+    values = img_hsv[:,:,2].flatten()
     hues = hues[hues > 70]
-    return np.mean(hues[np.nonzero(hues)])
+    return np.mean(hues[np.nonzero(hues)]), np.mean(saturations[np.nonzero(saturations)]), np.mean(values[np.nonzero(values)])
 
 # Given the dominant color, which sphero is it?
 def sphero_from_color(hsv):
@@ -269,22 +271,22 @@ def main():
                 # for mask, (x,y) in circle_masks:
                     circle_frame = cv2.bitwise_and(frame_hsv, frame_hsv, mask=mask)
                     green_mask, green_center = I_generic.processColor(circle_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
-                    # green_mask, green_center = I_generic.processColor(circle_frame, lower=LOWER_WHITE, upper=UPPER_WHITE)
-                    h = get_average_hue(cv2.bitwise_and(frame_hsv, frame_hsv, mask=inner_mask))
-                    if (green_center is not None) and h > 70:
+                    h,s,v = get_average_hsv(cv2.bitwise_and(frame_hsv, frame_hsv, mask=inner_mask))
+                    if (green_center is not None) and s > 80:
+                        print(f"{h:3.1f} {s:3.1f} {v:3.1f}")
                         cv2.line(frame, green_center, (x,y), (255,0,0), 2)
                         green_centers.append(green_center)
                         circle_centers.append((x,y))
                         avg_hues.append(h)
                         for_viz.append(inner_mask)
 
-                    # for visualizing
-                    if (circle_mask_viz is None):
-                        circle_mask_viz = mask
-                        inner_circle_mask_viz = inner_mask
-                    else:
-                        circle_mask_viz = cv2.bitwise_or(circle_mask_viz, mask)
-                        inner_circle_mask_viz = cv2.bitwise_or(inner_circle_mask_viz, inner_mask)
+                        # for visualizing
+                        if (circle_mask_viz is None):
+                            circle_mask_viz = mask
+                            inner_circle_mask_viz = inner_mask
+                        else:
+                            circle_mask_viz = cv2.bitwise_or(circle_mask_viz, mask)
+                            inner_circle_mask_viz = cv2.bitwise_or(inner_circle_mask_viz, inner_mask)
 
 
                 '''
