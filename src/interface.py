@@ -10,11 +10,11 @@ from pysphero.core import Sphero
 from pysphero.driving import Direction, StabilizationIndex
 from pysphero.device_api.sensor import CoreTime, Accelerometer, Quaternion, Attitude, Gyroscope
 
-from sphero_interface.msg import HeadingStamped, ColorRequest, SpheroNames
+from sphero_interface.msg import ColorRequest, SpheroNames, HeadingStamped
 from std_msgs.msg import Float32, String, Bool
 from sensor_msgs.msg import Imu
 from geometry_msgs.msg import Quaternion as RosQuaternion
-from tf.transformations import euler_from_quaternion
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 import rospy
 import traceback
@@ -168,11 +168,14 @@ class WrappedSphero(Sphero):
         imu = Imu()
         imu.header.stamp = rospy.Time.now() # NOTE: This maybe should be CoreTime
         imu.header.frame_id = "base_footprint" # NOTE: this measurement is in the sphero's frame. Need to make it relative to starting orientation to use here
-        imu.orientation = orientation
         imu.orientation_covariance = [1e-6, 0, 0, 0, 1e-6, 0, 0, 0, 1e-6]
+        r,p,y = euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])
+        # print(f"{self.name} {r:1.2f} {p:1.2f} {y:1.2f}")
+        # The default 0 is actually +/- pi (WHY!?). We correct for that here.
+        offset_yaw = y + math.pi
+        imu.orientation = quaternion_from_euler(r, p, offset_yaw)
+
         self.ekf_orientation_pub.publish(imu)
-        r,p,y = [math.degrees(entry) for entry in euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])]
-        # print(f"{self.name} {r:1.1f} {p:1.1f} {y:1.1f}")
 
     def step(self):
         if not self.is_connected: 

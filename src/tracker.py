@@ -16,7 +16,7 @@ from itertools import permutations
 import rospy
 from std_msgs.msg import Float32
 from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped, PoseWithCovariance, TwistWithCovariance, Pose, Twist, Point, Quaternion
-from sphero_interface.msg import SpheroNames
+from sphero_interface.msg import SpheroNames, PositionGoal, HeadingStamped
 import matplotlib.pyplot as plt
 
 import cv2
@@ -39,6 +39,10 @@ EXPECTED_SPHERO_RADIUS = 30 # size of spheros in pixels
 circle_radiuses = dict()
 frame_hsv = None
 
+'''
+Each sphero gets its own instance of this class
+TODO: This class obviously needs a refactor
+'''
 class VisionDetect:
     def __init__(self, sphero_id=None, imageName=None):
         self.sphero_id = sphero_id
@@ -52,10 +56,14 @@ class VisionDetect:
         self.theta_smoother = [] # low pass filter for theta
 
         self.odom_pub = rospy.Publisher(f"/{self.sphero_id}/odom", Odometry, queue_size=10)
-        
+        self.initial_heading_pub = rospy.Publisher(f"/{self.sphero_id}/initial_heading", HeadingStamped, queue_size=1, latch=True)
+
         self.goal = None
-        self.goal_sub = rospy.Subscriber(f"/{self.sphero_id}/goal", Pose2D, goal_cb, callback_args=self.sphero_id) # this should be in rviz probably
-        self.ekf_odom_sub = rospy.Subscriber(f"/{self.sphero_id}_ekf/odom_combined", PoseWithCovarianceStamped, ekf_cb, callback_args=self.sphero_id)
+        self.goal_sub = rospy.Subscriber(f"/{self.sphero_id}/goal", PositionGoal, goal_cb) # this should be in rviz probably
+        self.pose_sub = rospy.Subscriber(f"/{self.sphero_id}/pose", Pose2D, pose_cb, callback_args=self.sphero_id)
+
+        self.initial_heading_samples = []
+        self.initial_heading = None
 
     def read_image(self, image):
         self.image = image
@@ -151,17 +159,16 @@ def mouse_cb(event, x, y, flags, params):
         H = imagek[y, x, 0]
         S = imagek[y, x, 1]
         V = imagek[y, x, 2]
-        print(f'({x},{y})-  (h,s,v) {H}, {S}, {V}')
+        print(f'coord_hsv ({x},{y})-  (h,s,v) {H}, {S}, {V}')
 
 ekf_pose2d = dict()
-def ekf_cb(data, sphero_id):
-    ekf_pose2d[sphero_id] = (data.pose.pose.position.x, data.pose.pose.position.y, euler_from_quaternion([data.pose.pose.orientation.x, data.pose.pose.orientation.y, data.pose.pose.orientation.z, data.pose.pose.orientation.w])[2])
+def pose_cb(data, sphero_id):
+    ekf_pose2d[sphero_id] = (data.x, data.y, data.theta)
     # rospy.loginfo(f"{sphero_id} ekf_cb: {ekf_pose2d[sphero_id][0]:1.1f}, {ekf_pose2d[sphero_id][1]:1.1f}, {ekf_pose2d[sphero_id][2]:1.1f}")
 
 goal_pose2d = dict()
-def goal_cb(goal_pose, sphero_id):
-    goal_pose2d[sphero_id] = goal_pose
-
+def goal_cb(position_goal):
+    goal_pose2d[position_goal.sphero_name] = position_goal.goal
 
 detectors_dict = dict()
 def sphero_names_cb(msg):
@@ -273,7 +280,7 @@ def main():
                     green_mask, green_center = I_generic.processColor(circle_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
                     h,s,v = get_average_hsv(cv2.bitwise_and(frame_hsv, frame_hsv, mask=inner_mask))
                     if (green_center is not None) and s > 80:
-                        print(f"{h:3.1f} {s:3.1f} {v:3.1f}")
+                        # print(f"{h:3.1f} {s:3.1f} {v:3.1f}")
                         cv2.line(frame, green_center, (x,y), (255,0,0), 2)
                         green_centers.append(green_center)
                         circle_centers.append((x,y))
@@ -357,32 +364,40 @@ def main():
 
         # >>>> convert image coordinates to scene coordinates
         # TODO: Connect to each individual sphero's ekf node (if resources allow)
-        # pose_imgs = []
-        # sphero_ids = []
         for I in detectors_dict.values():
             pose_img = I.last_detected_color_pose
             if pose_img is not None:
-                # x,y = img_to_world(pose_img) # TODO: need to transform?
                 x,y,theta = pose_img
-                odom_msg = Odometry()
-                odom_msg.header.stamp = rospy.Time.now()
-                odom_msg.header.frame_id = "odom"
-                p = PoseWithCovariance()
-                p.pose.position = Point(x,y,0)
-                # q = quaternion_from_euler(0., 0., theta)
-                q = quaternion_from_euler(0., 0., theta)
-                p.pose.orientation = Quaternion(*q)
-                p.covariance = (1e-6*np.identity(6)).flatten() # TODO
-                tw = TwistWithCovariance() # TODO
-                odom_msg.pose = p
-                odom_msg.twist = tw
-                # rospy.loginfo(f"{I.sphero_id} publishing odom msg {odom_msg}")
-                I.odom_pub.publish(odom_msg)
-                I.last_detected_color_pose = None
-        #         pose_imgs.append(pose_img)
-        #         sphero_ids.append(I.sphero_id)
-        # plot_spheros(pose_imgs, sphero_ids, ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])
-        # <<<< convert image coordinates to scene coordinates
+                # make sure we have a baseline heading for each sphero
+                if I.initial_heading is None:
+                    I.initial_heading_samples.append(theta)
+                    if (len(I.initial_heading_samples) > 10):
+                        rospy.loginfo(f"Setting initial heading for {I.sphero_id} to {np.mean(I.initial_heading_samples):1.2f}")
+                        I.initial_heading = np.mean(I.initial_heading_samples)
+                        I.initial_heading_pub.publish(HeadingStamped(rospy.get_time(), 0.0, I.initial_heading))
+                else:
+                    odom_msg = Odometry()
+                    odom_msg.header.stamp = rospy.Time.now()
+                    odom_msg.header.frame_id = "odom"
+                    p = PoseWithCovariance()
+                    p.pose.position = Point(x,y,0)
+
+                    # Calculate the offset theta considering the initial heading of the sphero. This must be done so the ekf sees consistent data between the orientation published in interface.py and this detection
+                    offset_theta = theta - I.initial_heading
+                    while offset_theta > np.pi: offset_theta -= np.pi*2
+                    while offset_theta < -np.pi: offset_theta += np.pi*2
+                    rospy.loginfo(f"{I.sphero_id}: {theta:1.2f} - {I.initial_heading:1.2f} = {offset_theta:1.2f}")
+                    # 
+
+                    q = quaternion_from_euler(0., 0., offset_theta)
+                    p.pose.orientation = Quaternion(*q)
+                    p.covariance = (1e-6*np.identity(6)).flatten() # TODO
+                    tw = TwistWithCovariance() # TODO
+                    odom_msg.pose = p
+                    odom_msg.twist = tw
+                    I.odom_pub.publish(odom_msg)
+                    I.last_detected_color_pose = None
+            # <<<< convert image coordinates to scene coordinates
 
         # Exit if ESC pressed
         if SHOW_IMAGES and cv2.waitKey(1) & 0xFF == ord('q'): # if press SPACE bar

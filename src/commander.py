@@ -63,7 +63,7 @@ class Commander():
         self.pub = rospy.Publisher(sphero_id+"/cmd", HeadingStamped, queue_size=1)
         self.goal_pub = rospy.Publisher(sphero_id+"/goal", Pose2D, queue_size=1)
 
-        # Initialize the sphero's orientation to what it considers to be 0
+        # Initialize the sphero's orientation to what it considers to be 0 #TODO: This needs to be done somewhere else. Tracker?
         for i in range(10):
             self.pub.publish(HeadingStamped(v=0, theta=0))
             rospy.sleep(0.05)
