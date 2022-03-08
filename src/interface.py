@@ -138,12 +138,19 @@ class WrappedSphero(Sphero):
 
     def cmd_cb(self, heading_magnitude_cmd):
         '''
-        Cap and store the recieved command
+        Cap and send the command
         '''
         self.cmd = heading_magnitude_cmd
         self.cmd.t = time()
         self.cmd.v = min(100, max(self.cmd.v, -100))
         self.cmd.theta = min(360, max(self.cmd.theta, 0)) # todo: correct for wrap
+
+        try:
+            with time_limit(1):
+                self.driving.drive_with_heading(int(self.cmd.v), int(self.cmd.theta), Direction.forward)
+        except TimeoutException as e:
+            rospy.loginfo(f"{self.name} timed out on step.")
+
 
     def color_cb(self, color_request):
         rospy.loginfo("Setting color to "+str(color_request))
@@ -195,7 +202,8 @@ class WrappedSphero(Sphero):
         try:
             with time_limit(1):
                 self.light_pub.publish(self.sensor.get_ambient_light_sensor_value())
-                self.driving.drive_with_heading(int(v), int(theta), Direction.forward)
+                if (self.cmd.v == 0): # make sure 0s get through
+                    self.driving.drive_with_heading(int(v), int(theta), Direction.forward)
         except TimeoutException as e:
             rospy.loginfo(f"{self.name} timed out on step.")
 
@@ -240,7 +248,10 @@ def main():
 
     # Close out the blueooth adapters
     for sphero in spheros.values():
-        if sphero and sphero.ble_adapter: sphero.ble_adapter.close()
+        if sphero and sphero.ble_adapter:
+            rospy.loginfo(f"Closing out bluetooth adapter for {sphero.name}")
+            sphero.power.sleep()
+            sphero.ble_adapter.close()
 
 if __name__ == "__main__":
     try:
