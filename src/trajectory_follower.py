@@ -18,7 +18,7 @@ from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped
 from sphero_interface.msg import HeadingStamped, SpheroNames, PositionGoal
 from tf.transformations import euler_from_quaternion
 
-from utils import pose2d_distance
+from utils import pose2d_distance, posewithcovariancestamped_to_pose2d
 
 VERBOSE = False
 
@@ -93,12 +93,12 @@ class TrajectoryFollowerGroup():
             else:
                 self.cmd_publishers[name] = rospy.Publisher(name+"/cmd", HeadingStamped, queue_size=1)
                 self.pose_subscribers[name] = rospy.Subscriber(name+"_ekf/odom_combined", PoseWithCovarianceStamped, self.ekf_callback, callback_args=name)
-                self.goal_subscribers[name] = rospy.Subscriber(name+"/goal", PositionGoal, self.goal_cb, callback_args=name)
-                self.initial_heading_subscribers[name] = rospy.Subscriber(name+"/initial_heading", HeadingStamped, self.initial_heading_cb, callback_args=name)
+                self.goal_subscribers[name] = rospy.Subscriber(name+"/goal", PositionGoal, self.goal_callback, callback_args=name)
+                self.initial_heading_subscribers[name] = rospy.Subscriber(name+"/initial_heading", HeadingStamped, self.initial_heading_callback, callback_args=name)
 
     def ekf_callback(self, msg, name): self.sphero_poses[name] = msg
-    def goal_callback(self, msg, name): self.goal_poses[name] = msg
-    def initial_heading_callback(self, msg, name): self.initial_heading[name] = msg
+    def goal_callback(self, msg, name): self.goal_poses[name] = msg.goal # TODO: this should either have name as a callback arg or use the name in the messages, not both
+    def initial_heading_callback(self, msg, name): self.initial_headings[name] = msg.theta
 
     def update(self):
         for name, goal in self.goal_poses.items():
@@ -109,10 +109,10 @@ class TrajectoryFollowerGroup():
                 rospy.logwarn("Goal, but no initial heading for " + name)
                 continue
 
-            cmd = self.cmd_for(self.sphero_poses[name], goal)
+            cmd = self.cmd_for(posewithcovariancestamped_to_pose2d(self.sphero_poses[name]), goal)
             self.cmd_publishers[name].publish(cmd)
 
-    def cmd_for(self, curr_pose, goal_pose, initial_heading=0):
+    def cmd_for(self, curr_pose: Pose2D, goal_pose: Pose2D, initial_heading=0):
         cmd = HeadingStamped()
         if (pose2d_distance(curr_pose, goal_pose) < GOAL_THRESHOLD):
             pass
@@ -125,7 +125,7 @@ class TrajectoryFollowerGroup():
 
 
             theta_goal = theta_goal
-            current_theta_local = initial_heading - self.pose.theta
+            current_theta_local = initial_heading - curr_pose.theta
 
             while theta_goal < 0: theta_goal += 2*math.pi
             while theta_goal > 2*math.pi: theta_goal -= 2*math.pi
@@ -147,7 +147,8 @@ Run a group of commanders that creates one sphero for each name on the topic
 def main():
     rospy.init_node("trajectory_follower")
     trajectory_follower_group = TrajectoryFollowerGroup()
-    while not (rospy.is_shutdown):
+    rospy.loginfo("Looping...")
+    while not (rospy.is_shutdown()):
         trajectory_follower_group.update()
         time.sleep(UPDATE_PERIOD)
 

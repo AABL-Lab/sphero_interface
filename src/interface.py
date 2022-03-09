@@ -145,11 +145,12 @@ class WrappedSphero(Sphero):
         self.cmd.v = min(100, max(self.cmd.v, -100))
         self.cmd.theta = min(360, max(self.cmd.theta, 0)) # todo: correct for wrap
 
-        try:
-            with time_limit(1):
-                self.driving.drive_with_heading(int(self.cmd.v), int(self.cmd.theta), Direction.forward)
-        except TimeoutException as e:
-            rospy.loginfo(f"{self.name} timed out on step.")
+        # unfortunately we can only do this in the main thread
+        # try:
+        #     with time_limit(1):
+        self.driving.drive_with_heading(int(self.cmd.v), int(self.cmd.theta), Direction.forward)
+        # except TimeoutException as e:
+        #     rospy.loginfo(f"{self.name} timed out on step.")
 
 
     def color_cb(self, color_request):
@@ -250,9 +251,17 @@ def main():
     for sphero in spheros.values():
         if sphero and sphero.ble_adapter:
             rospy.loginfo(f"Closing out bluetooth adapter for {sphero.name}")
-            sphero.power.sleep()
-            sphero.ble_adapter.close()
+            try:
+                with time_limit(1):
+                    sphero.power.enter_soft_sleep()
+            except TimeoutException as e:
+                rospy.loginfo(f"{sphero.name} timed out on enter_soft_sleep.")
 
+            try:
+                with time_limit(1):
+                    sphero.ble_adapter.close()
+            except TimeoutException as e:
+                rospy.loginfo(f"{sphero.name} timed out ble_adapter.close")
 if __name__ == "__main__":
     try:
         main()

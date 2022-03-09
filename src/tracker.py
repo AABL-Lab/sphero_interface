@@ -30,12 +30,12 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 '''
 Dictionary of Sphero Names (keys) and their corresponding colors (values)
 '''
-from TrackerParams import LOWER_GREEN, TRACK_WITH_CIRCLES, TRACK_WITH_COLOR, UPPER_GREEN, Sphero_Params_by_ID, Sphero_HSV_Color, Sphero_RGB_Color, TrackerParams, LOWER_WHITE, UPPER_WHITE
+from TrackerParams import LOWER_GREEN, TRACK_WITH_CIRCLES, UPPER_GREEN, Sphero_Params_by_ID, Sphero_HSV_Color, Sphero_RGB_Color, TrackerParams, LOWER_WHITE, UPPER_WHITE
 
 VERBOSE = True
 SHOW_IMAGES = True
 
-EXPECTED_SPHERO_RADIUS = 30 # size of spheros in pixels
+EXPECTED_SPHERO_RADIUS = 20 # size of spheros in pixels
 circle_radiuses = dict()
 frame_hsv = None
 
@@ -242,6 +242,7 @@ def main():
         if not ok:
             print('Couldnt read frame')
             continue
+        frame_viz = frame.copy()
 
         '''
         Mask each detected circle, check what color the grid is, and update the corresponding sphero
@@ -254,6 +255,8 @@ def main():
             circle_masks = []
             inner_circle_masks = [] # for clipping out the inner color
 
+            circle_mask_viz = None
+            inner_circle_mask_viz = None
             if circles is not None:
                 circles =  np.uint16(np.around(circles))
                 for c in circles[0, :]:
@@ -266,8 +269,14 @@ def main():
                     cv2.circle(inner_circle_mask, (c[0], c[1]), int(c[2]*0.3), (255,255,255), -1)
                     inner_circle_masks.append((inner_circle_mask, (c[0], c[1])))
 
-                circle_mask_viz = None
-                inner_circle_mask_viz = None
+                    # for visualizing
+                    if (circle_mask_viz is None):
+                        circle_mask_viz = circle_mask
+                        inner_circle_mask_viz = inner_circle_mask
+                    else:
+                        circle_mask_viz = cv2.bitwise_or(circle_mask_viz, circle_mask)
+                        inner_circle_mask_viz = cv2.bitwise_or(inner_circle_mask_viz, inner_circle_mask)
+
                 green_centers = []
                 circle_centers = []
                 avg_hues = []
@@ -279,21 +288,27 @@ def main():
                     circle_frame = cv2.bitwise_and(frame_hsv, frame_hsv, mask=mask)
                     green_mask, green_center = I_generic.processColor(circle_frame, lower=LOWER_GREEN, upper=UPPER_GREEN)
                     h,s,v = get_average_hsv(cv2.bitwise_and(frame_hsv, frame_hsv, mask=inner_mask))
-                    if (green_center is not None) and s > 80:
-                        # print(f"{h:3.1f} {s:3.1f} {v:3.1f}")
-                        cv2.line(frame, green_center, (x,y), (255,0,0), 2)
-                        green_centers.append(green_center)
-                        circle_centers.append((x,y))
-                        avg_hues.append(h)
-                        for_viz.append(inner_mask)
+                    if (green_center is not None):
+                        if h > 90 and s > 90:
+                            # print(f"({x:1.0f}, {y:1.0f}) qhsv: {h:3.1f} {s:3.1f} {v:3.1f}")
+                            green_centers.append(green_center)
+                            circle_centers.append((x,y))
+                            avg_hues.append(h)
+                            for_viz.append(inner_mask)
 
-                        # for visualizing
-                        if (circle_mask_viz is None):
-                            circle_mask_viz = mask
-                            inner_circle_mask_viz = inner_mask
+                            cv2.circle(frame_viz, green_center, 5, (0,255,0), -1)
+                            cv2.circle(frame_viz, (x,y), 5, (0,0,255), -1)
+
+                            # # for visualizing
+                            # if (circle_mask_viz is None):
+                            #     circle_mask_viz = mask
+                            #     inner_circle_mask_viz = inner_mask
+                            # else:
+                            #     circle_mask_viz = cv2.bitwise_or(circle_mask_viz, mask)
+                            #     inner_circle_mask_viz = cv2.bitwise_or(inner_circle_mask_viz, inner_mask)
                         else:
-                            circle_mask_viz = cv2.bitwise_or(circle_mask_viz, mask)
-                            inner_circle_mask_viz = cv2.bitwise_or(inner_circle_mask_viz, inner_mask)
+                            # print(f"FILTERED OUT ({x:1.0f}, {y:1.0f}) hsv: {h:3.1f} {s:3.1f} {v:3.1f}")
+                            pass
 
 
                 '''
@@ -302,7 +317,8 @@ def main():
                 '''
                 # print(f"{min(avg_hues):1.1f}")
                 # NOTE: SO CONVOLUTED :(
-                if len(avg_hues) == len(detectors_dict.keys()): # Only update when we see everyone (to avoid swapping)
+                # if len(avg_hues) == len(detectors_dict.keys()): # Only update when we see everyone (to avoid swapping)
+                    ### METHOD 1
                     # print(f"Trying to match {avg_hues} with {detectors_dict.keys()}")
                     # possible_keys = list(detectors_dict.keys())
                     # all_sphero_id_permutations = permutations(possible_keys)
@@ -320,43 +336,94 @@ def main():
                     #         winning_permutation = permutation
                     #         # print(f"Winning permutation: {winning_permutation}")
 
+                    ### METHOD 2
                     # even simpler, just order them by hue
-                    sorted_hues = sorted(zip(avg_hues, circle_centers, green_centers), key=lambda x: x[0])
-                    sorted_ids = sorted(zip(detectors_dict.keys(), [Sphero_HSV_Color[key] for key in detectors_dict.keys()]), key=lambda x: x[1][0])
-                    # now we should have centers and sphero ids ordered from least hue (observers and expected, respectively) to most hue
-                    for (hue, (centerx, centery), (greenx, greeny)), (sphero_id, _) in zip(sorted_hues, sorted_ids):
-                        theta = atan2(-greeny + centery, greenx - centerx) # Image coords need to have y swapped
-                        # print(f"{sphero_id}: matched to {hue:1.1f}. Pose: {centerx:1.0f}, {centery:1.0f}, {theta:1.2f}. Green: {greenx:1.0f}, {greeny:1.0f} - ")
-                        detectors_dict[sphero_id].set_detected_position(centerx, centery, theta)
-                    # print("="*20)
-                    ''''''
-                else: # TODO
-                    pass
+                    # sorted_hues = sorted(zip(avg_hues, circle_centers, green_centers), key=lambda x: x[0])
+                    # sorted_ids = sorted(zip(detectors_dict.keys(), [Sphero_HSV_Color[key] for key in detectors_dict.keys()]), key=lambda x: x[1][0])
+                    # # now we should have centers and sphero ids ordered from least hue (observers and expected, respectively) to most hue
+                    # for (hue, (centerx, centery), (greenx, greeny)), (sphero_id, _) in zip(sorted_hues, sorted_ids):
+                    #     theta = atan2(-greeny + centery, greenx - centerx) # Image coords need to have y swapped
+                    #     detectors_dict[sphero_id].set_detected_position(centerx, centery, theta)
+                    #     cv2.line(frame, (greenx, greeny), (centerx,centery), (255,0,0), 2)
+
+                ''''''
+                
+                ### METHOD 3
+                # Don't count on getting every sphero every frame
+                disqualified_spheros = []
+                for (centerx, centery), avg_hue, (greenx, greeny) in zip(circle_centers, avg_hues, green_centers):
+                    cv2.line(frame_viz, (greenx, greeny), (centerx,centery), (255,0,0), 2)
+                    # which sphero's colors are closest?
+                    closest_sphero_id = None
+                    closest_hue = float("inf")
+                    for sphero_id, (h,s,v) in Sphero_HSV_Color.items():
+                        if sphero_id not in detectors_dict.keys() or sphero_id in disqualified_spheros: continue
+
+                        score = abs(avg_hue - h)
+                        if score < closest_hue:
+                            closest_sphero_id = sphero_id
+                            closest_hue = score
+
+                    if (closest_sphero_id is not None):
+                        theta = atan2(-greeny + centery, greenx - centerx)
+                        disqualified_spheros.append(closest_sphero_id)
+                        detectors_dict[closest_sphero_id].set_detected_position(centerx, centery, theta)
+                        # rospy.loginfo(f"{closest_sphero_id} at ({centerx:1.0f}, {centery:1.0f})")
 
                 # Look for the green directions on the circles
+                
                 if circle_mask_viz is not None:
                     circle_frame = cv2.bitwise_and(frame, frame, mask=circle_mask_viz)
                     inner_circle_frame = cv2.bitwise_and(frame, frame, mask=inner_circle_mask_viz)
                     cv2.imshow("circles", circle_frame)
                     cv2.imshow("inner_circles", inner_circle_frame)
-        ''''''
+        else:
+            image = frame
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            blur = cv2.medianBlur(gray, 5)
+            sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+            sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
 
+            thresh = cv2.threshold(sharpen,160,255, cv2.THRESH_BINARY_INV)[1]
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+            close = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+            cnts = cv2.findContours(close, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+
+            min_area = 100
+            max_area = 1500
+            image_number = 0
+            for c in cnts:
+                area = cv2.contourArea(c)
+                if area > min_area and area < max_area:
+                    x,y,w,h = cv2.boundingRect(c)
+                    ROI = image[y:y+h, x:x+w]
+                    cv2.imwrite('ROI_{}.png'.format(image_number), ROI)
+                    cv2.rectangle(image, (x, y), (x + w, y + h), (36,255,12), 2)
+                    image_number += 1
+
+            cv2.imshow('sharpen', sharpen)
+            cv2.imshow('close', close)
+            cv2.imshow('thresh', thresh)
+            cv2.imshow('image', image)
+            cv2.waitKey()
 
         if (SHOW_IMAGES):
-            cv2.imshow("image", frame)
+            cv2.imshow("image", frame_viz)
             cv2.setMouseCallback('image', mouse_cb)
 
-        if (SHOW_IMAGES and ekf_pose2d):
-            efk_frame = frame.copy()
-            for sphero_id, (x,y,theta) in ekf_pose2d.items():
-                if (x > 0 and y > 0):
-                    cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
-                    draw_theta = theta
-                    cv2.line(efk_frame, (int(x), int(y)), (int(x+15*np.cos(draw_theta)), int(y-15*np.sin(draw_theta))), (0,0,255), 2)
-            
-            for pose2d in goal_pose2d.values():
-                cv2.circle(efk_frame, (int(pose2d.x), int(pose2d.y)), 25, (255,255,255), -1)
-            cv2.imshow("tracked", efk_frame)
+            if (ekf_pose2d):
+                efk_frame = frame.copy()
+                for sphero_id, (x,y,theta) in ekf_pose2d.items():
+                    if (x > 0 and y > 0):
+                        cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
+                        draw_theta = theta
+                        cv2.line(efk_frame, (int(x), int(y)), (int(x+15*np.cos(draw_theta)), int(y-15*np.sin(draw_theta))), (0,0,255), 2)
+                
+                for pose2d in goal_pose2d.values():
+                    cv2.circle(efk_frame, (int(pose2d.x), int(pose2d.y)), 25, (255,255,255), -1)
+                cv2.imshow("tracked", efk_frame)
 
         # Plot spheros NOTE: Out of place, should be its own node probably
         plot_spheros([ekf_pose2d[key] for key in ekf_pose2d.keys()], [key for key in ekf_pose2d.keys()], ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])
@@ -371,8 +438,9 @@ def main():
                 # make sure we have a baseline heading for each sphero
                 if I.initial_heading is None:
                     I.initial_heading_samples.append(theta)
-                    if (len(I.initial_heading_samples) > 10):
+                    if (len(I.initial_heading_samples) > 10 and np.std(I.initial_heading_samples) < 0.1):
                         rospy.loginfo(f"Setting initial heading for {I.sphero_id} to {np.mean(I.initial_heading_samples):1.2f}")
+                        rospy.loginfo([f"{entry:1.1f}" for entry in I.initial_heading_samples])
                         I.initial_heading = np.mean(I.initial_heading_samples)
                         I.initial_heading_pub.publish(HeadingStamped(rospy.get_time(), 0.0, I.initial_heading))
                 else:
@@ -386,12 +454,19 @@ def main():
                     offset_theta = theta - I.initial_heading
                     while offset_theta > np.pi: offset_theta -= np.pi*2
                     while offset_theta < -np.pi: offset_theta += np.pi*2
-                    rospy.loginfo(f"{I.sphero_id}: {theta:1.2f} - {I.initial_heading:1.2f} = {offset_theta:1.2f}")
+                    # rospy.loginfo(f"{I.sphero_id}: {theta:1.2f} - {I.initial_heading:1.2f} = {offset_theta:1.2f}")
                     # 
 
                     q = quaternion_from_euler(0., 0., offset_theta)
                     p.pose.orientation = Quaternion(*q)
-                    p.covariance = (1e-6*np.identity(6)).flatten() # TODO
+                    p.covariance = np.array([ # ignore covairance between factors, but the way we're doing this we get a lot of jitter, so x and y definitely have some variance. In pixels.
+                        [3., 0., 0., 0., 0., 0.], # pixels
+                        [0., 3., 0., 0., 0., 0.],  # pixels
+                        [0., 0., 1e-6, 0., 0., 0.],
+                        [0., 0., 0., 1e-6, 0., 0.],
+                        [0., 0., 0., 0., 1e-6, 0.],
+                        [0., 0., 0., 0., 0., 0.1], # radians
+                        ]).flatten() # TODO
                     tw = TwistWithCovariance() # TODO
                     odom_msg.pose = p
                     odom_msg.twist = tw

@@ -1,7 +1,7 @@
 
 import math
 
-from geometry_msgs import Pose2D
+from geometry_msgs.msg import Pose2D
 from tf.transformations import euler_from_quaternion
 
 def posewithcovariancestamped_to_pose2d(msg):

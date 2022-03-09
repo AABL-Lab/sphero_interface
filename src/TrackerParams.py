@@ -9,8 +9,8 @@ class TrackerParams(NamedTuple):
     hsv_lower: tuple
     hsv_upper: tuple
 
-TRACK_WITH_COLOR = False
-TRACK_WITH_CIRCLES = not TRACK_WITH_COLOR
+TRACK_WITH_SQUARES = True
+TRACK_WITH_CIRCLES = not TRACK_WITH_SQUARES
 
 BLUE_RGB = (0, 0, 100)
 BLUE_HSV = (100, 100, 250)
@@ -24,7 +24,7 @@ MAGENTA_HSV = (140, 70, 200)
 YELLOW_RGB = (100, 100, 0)
 YELLOW_HSV = (165, 2, 255)
 
-GREEN_RGB = (0, 100, 0)
+GREEN_RGB = (0, 20, 0)
 GREEN_HSV = (82, 50, 200)
 
 WHITE_RGB = (10, 10, 10)
