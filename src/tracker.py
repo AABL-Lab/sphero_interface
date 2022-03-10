@@ -10,6 +10,7 @@ from re import S
 import traceback
 from turtle import circle
 from IPython import embed
+from torch import bitwise_not
 from plot_state import plot_spheros
 from itertools import permutations
 
@@ -107,10 +108,12 @@ class VisionDetect:
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         center = None
         if len(contours) == 0:
+            biggest_blob = 0
             pass
             # self.center = None
         else:
             blob = max(contours, key=lambda el: cv2.contourArea(el))
+            biggest_blob = cv2.contourArea(blob)
             M = cv2.moments(blob)
             try:
                 center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
@@ -118,10 +121,10 @@ class VisionDetect:
                 # rospy.logerr("Couldn't calculate center from moment: {}".format(M))
                 center = None
 
-        if (center):
-            cv2.circle(mask, center, int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
+        # if (center):
+        #     cv2.circle(mask, center, int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
 
-        return mask, center
+        return mask, center, biggest_blob
 
     def set_detected_position(self, x_img, y_img, theta):
         self.theta_smoother.append(theta)
@@ -248,8 +251,8 @@ def main():
         Mask each detected circle, check what color the grid is, and update the corresponding sphero
         '''
         global frame_hsv
+        frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         if TRACK_WITH_CIRCLES:
-            frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             gray_blurred, circles = I_generic.detectCircle(frame)
             height,width,depth = frame.shape
             circle_masks = []
@@ -378,7 +381,8 @@ def main():
                     cv2.imshow("circles", circle_frame)
                     cv2.imshow("inner_circles", inner_circle_frame)
         else:
-            image = frame
+            image = frame.copy()
+            height,width,depth = image.shape
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             blur = cv2.medianBlur(gray, 5)
             sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
@@ -388,26 +392,67 @@ def main():
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
             close = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
 
-            cnts = cv2.findContours(close, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cnts = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
             cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-
-            min_area = 100
-            max_area = 1500
+            min_area = 200
+            max_area = 400
             image_number = 0
+            circle_masks = [] # circles around and including polygon
+            poly_masks = [] # polygons themselves
+            centers = []
             for c in cnts:
                 area = cv2.contourArea(c)
+                # print(f" {len(c)} points area {area}")
                 if area > min_area and area < max_area:
+                    mask = np.zeros((height,width), np.uint8)
                     x,y,w,h = cv2.boundingRect(c)
-                    ROI = image[y:y+h, x:x+w]
-                    cv2.imwrite('ROI_{}.png'.format(image_number), ROI)
-                    cv2.rectangle(image, (x, y), (x + w, y + h), (36,255,12), 2)
-                    image_number += 1
+                    cx, cy = x+(w//2), y+(h//2)
+                    cv2.circle(mask, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
+                    circle_masks.append(mask)
+                    centers.append((cx,cy))
+
+                    mask = np.zeros((height,width), np.uint8)
+                    cv2.fillPoly(mask, pts=[c], color=(255,255,255))
+                    poly_masks.append(mask)
+                    
+                    # for i in range(len(c)):
+                    #     x0,y0 = c[i][0]
+                    #     if i == len(c) - 1:
+                    #         x1,y1 = c[0][0]
+                    #     else:
+                    #         x1,y1 = c[i+1][0]
+
+                    #     cv2.line(image, (x0,y0), (x1,y1), (255,0,0), 2)
+                #     # ROI = image[y:y+h, x:x+w]
+                #     # cv2.imwrite('ROI_{}.png'.format(image_number), ROI)
+                #     cv2.rectangle(image, (x, y), (x + w, y + h), (36,255,12), 2)
+                #     image_number += 1
 
             cv2.imshow('sharpen', sharpen)
             cv2.imshow('close', close)
             cv2.imshow('thresh', thresh)
+            # print(f"centers {centers}")
+            for circle_mask, poly_mask, (cx, cy) in zip(circle_masks, poly_masks, centers):
+                rim_mask = cv2.bitwise_and(circle_mask, cv2.bitwise_not(poly_mask))
+                rim_img = cv2.bitwise_and(frame, frame, mask=rim_mask)
+                rim_img = cv2.cvtColor(rim_img, cv2.COLOR_RGB2HSV)
+                cv2.imshow('rim_mask', rim_mask)
+                for detector in detectors_dict.values():
+                    color_mask, color_center, biggest_blob = detector.processColor(rim_img.copy())
+                    cv2.imshow('color_mask', color_mask)
+                    if (color_center is not None):
+                        theta = atan2(-color_center[1] + cy, color_center[0] - cx)
+                        cv2.line(image, (color_center[0], color_center[1]), (cx,cy), (255,0,0), 2)
+                        detector.set_detected_position(cx, cy, theta)
+                        # rospy.loginfo(f"{detector.sphero_id} at ({cx:1.0f}, {cy:1.0f}) blobsize: {biggest_blob}")
+                        cv2.circle(rim_img, (color_center[0], color_center[1]), 5, (255,0,0), -1)
+                        cv2.imshow(f'rim_img', rim_img)
+                        
+
             cv2.imshow('image', image)
-            cv2.waitKey()
+            if cv2.waitKey(1) & 0xFF == ord('q'): # if press SPACE bar
+                rospy.signal_shutdown("Quit")
+                break
 
         if (SHOW_IMAGES):
             cv2.imshow("image", frame_viz)

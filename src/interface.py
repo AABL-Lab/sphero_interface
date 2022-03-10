@@ -111,10 +111,19 @@ class WrappedSphero(Sphero):
                     rospy.loginfo("Disabling sphero control system.")
                     self.driving.set_stabilization(StabilizationIndex.no_control_system)
                 r,g,b = Sphero_RGB_Color[self.name]
-                # self.user_io.set_all_leds_8_bit_mask(front_color=Color(*WHITE_RGB), back_color=Color(0,0,0)) #Color(r,g,b))
-                self.user_io.set_all_leds_8_bit_mask(front_color=Color(*GREEN_RGB), back_color=Color(0,0,0)) #Color(r,g,b))
+                self.user_io.set_all_leds_8_bit_mask(front_color=Color(r,g,b), back_color=Color(0,0,0)) #Color(r,g,b))
+                # self.user_io.set_all_leds_8_bit_mask(front_color=Color(*GREEN_RGB), back_color=Color(0,0,0)) #Color(r,g,b))
                 print(f"{self.name} Setting matrix to: {r},{g},{b}")
-                self.user_io.set_led_matrix_one_color(Color(red=r,green=g,blue=b))
+                self.user_io.set_led_matrix_one_color(Color(*WHITE_RGB))
+                # self.user_io.set_led_matrix_single_character("V", Color(r,g,b))
+                # self.user_io.set_led_matrix_one_color(Color(r,g,b))
+                # for pixel in [Pixel(x,y) for x in range(8) for y in range(2)]: # top of T
+                    # self.user_io.set_led_matrix_pixel(pixel, Color(*WHITE_RGB))
+                    # self.user_io.set_led_matrix_pixel(pixel, Color(r,g,b))
+                # for pixel in [Pixel(x,y) for x in range(3,5) for y in range(2,8)]: # top of T
+                    # self.user_io.set_led_matrix_pixel(pixel, Color(*WHITE_RGB))
+                    # self.user_io.set_led_matrix_pixel(pixel, Color(r,g,b))
+
             rospy.loginfo(f"{self.name} connected.")
             self.is_connected = True
         except Exception as e:
