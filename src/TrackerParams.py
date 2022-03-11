@@ -12,10 +12,10 @@ class TrackerParams(NamedTuple):
 TRACK_WITH_SQUARES = True
 TRACK_WITH_CIRCLES = not TRACK_WITH_SQUARES
 
-BLUE_RGB = (0, 0, 10)
+BLUE_RGB = (0, 255, 255)
 BLUE_HSV = (100, 100, 200)
 
-RED_RGB = (10, 0, 0)
+RED_RGB = (255, 255, 0)
 RED_HSV = (170, 170, 200)
 
 MAGENTA_RGB = (255, 0, 255)
@@ -79,19 +79,19 @@ Sphero_Params_by_ID = {
     "sc9": TrackerParams(hsv_lower=(0, 0, 0), hsv_upper=(255, 255, 255)),
 }
 
-hue_range = 20
-sat_range = 30
-val_range = 20
+hue_range = 100
+sat_range = 140
+val_range = 100
 # now go through and set the correct params
 for k,v in Sphero_Params_by_ID.items():
     # hsv = rgb_to_hsv([entry/255. for entry in Sphero_RGB_Color[k]])
     # hsv = [int(255*entry) for entry in hsv]
     hsv = Sphero_HSV_Color[k]
-    hsv_lower = (max(0, hsv[0] - hue_range), max(0, hsv[1] - sat_range), max(0, hsv[2] - val_range))
-    hsv_upper = (min(255, hsv[0] + hue_range), min(255, hsv[1] + sat_range), min(255, hsv[2] + val_range))
+    hsv_lower = (max(0, hsv[0] - hue_range), max(0, hsv[1] - sat_range), 240)
+    hsv_upper = (min(255, hsv[0] + hue_range), min(255, hsv[1] + sat_range), 255)
+    # hsv_lower = (max(0, hsv[0] - hue_range), max(0, hsv[1] - sat_range), max(0, hsv[2] - val_range))
+    # hsv_upper = (min(255, hsv[0] + hue_range), min(255, hsv[1] + sat_range), min(255, hsv[2] + val_range))
     Sphero_Params_by_ID[k] = TrackerParams(hsv_lower=hsv_lower, hsv_upper=hsv_upper)
-    # print(f"{k}: {hsv}")
-    # print(f"{k}: {hsv_lower}, {hsv_upper}")
 
 
 # get range for green (orientation light)

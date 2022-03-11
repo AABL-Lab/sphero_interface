@@ -1,6 +1,6 @@
 
 import math
-
+import cv2
 from geometry_msgs.msg import Pose2D
 from tf.transformations import euler_from_quaternion
 
@@ -16,3 +16,36 @@ def speed_to_mps(speed):
     Convert a 0-255 sphero speed command to meters-per-second
     '''
     return (speed/255) * 2.01168 # max speed (4.5 miles per hour)
+
+def list_vide_ports():
+    """
+    Test the ports and returns a tuple with the available ports and the ones that are working.
+    """
+    is_working = True
+    dev_port = 0
+    working_ports = []
+    available_ports = []
+    for dev_port in range(4):
+        camera = cv2.VideoCapture(dev_port)
+        if not camera.isOpened():
+            is_working = False
+            print("Port %s is not working." %dev_port)
+        else:
+            is_reading, img = camera.read()
+            w = camera.get(3)
+            h = camera.get(4)
+            if is_reading:
+                print("Port %s is working and reads images (%s x %s)" %(dev_port,h,w))
+                working_ports.append(dev_port)
+            else:
+                print("Port %s for camera ( %s x %s) is present but does not reads." %(dev_port,h,w))
+                available_ports.append(dev_port)
+    return available_ports,working_ports
+
+def init_videocapture(channel=0,width=1280, height=720):
+    camera = cv2.VideoCapture(channel, cv2.CAP_V4L2)
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+    camera.set(cv2.CAP_PROP_FPS, 30)
+    return camera

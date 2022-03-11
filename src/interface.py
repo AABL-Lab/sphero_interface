@@ -64,7 +64,7 @@ spheros = {
     # "F0:35:04:88:07:76": None,
     # "C9:B4:EF:32:EC:28": None,
 } if IN_LAB else {
-    # "F8:48:B1:E1:1E:2D": None,
+    "F8:48:B1:E1:1E:2D": None,
     "D9:81:9E:B8:AD:DB": None,
 }
 
@@ -111,12 +111,12 @@ class WrappedSphero(Sphero):
                     rospy.loginfo("Disabling sphero control system.")
                     self.driving.set_stabilization(StabilizationIndex.no_control_system)
                 r,g,b = Sphero_RGB_Color[self.name]
-                self.user_io.set_all_leds_8_bit_mask(front_color=Color(r,g,b), back_color=Color(0,0,0)) #Color(r,g,b))
+                self.user_io.set_all_leds_8_bit_mask(front_color=Color(r//10,g//10,b//10), back_color=Color(0,0,0)) #Color(r,g,b))
                 # self.user_io.set_all_leds_8_bit_mask(front_color=Color(*GREEN_RGB), back_color=Color(0,0,0)) #Color(r,g,b))
                 print(f"{self.name} Setting matrix to: {r},{g},{b}")
-                self.user_io.set_led_matrix_one_color(Color(*WHITE_RGB))
+                # self.user_io.set_led_matrix_one_color(Color(*WHITE_RGB))
+                self.user_io.set_led_matrix_one_color(Color(r,g,b))
                 # self.user_io.set_led_matrix_single_character("V", Color(r,g,b))
-                # self.user_io.set_led_matrix_one_color(Color(r,g,b))
                 # for pixel in [Pixel(x,y) for x in range(8) for y in range(2)]: # top of T
                     # self.user_io.set_led_matrix_pixel(pixel, Color(*WHITE_RGB))
                     # self.user_io.set_led_matrix_pixel(pixel, Color(r,g,b))
@@ -258,7 +258,7 @@ def main():
 
     # Close out the blueooth adapters
     for sphero in spheros.values():
-        if sphero and sphero.ble_adapter:
+        if sphero and sphero._ble_adapter:
             rospy.loginfo(f"Closing out bluetooth adapter for {sphero.name}")
             try:
                 with time_limit(1):
