@@ -5,6 +5,7 @@ opencv code by
 Email: siddharthchandragzb@gmail.com
 '''
 
+from concurrent.futures import process
 from math import atan2, degrees
 import traceback
 from turtle import circle
@@ -42,8 +43,20 @@ These parameters must be tuned for image size
 
 VERBOSE = True
 SHOW_IMAGES = True
+CHECK_FOR_UPDATED_PARAMS = True
 
-EXPECTED_SPHERO_RADIUS = 50 # size of spheros in pixels
+
+global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE
+def update_rosparams():
+    global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE
+    EXPECTED_SPHERO_RADIUS = rospy.get_param("/expected_sphero_radius")
+    MIN_CONTOUR_AREA = rospy.get_param("/min_contour_area")
+    MAX_CONTOUR_AREA = rospy.get_param("/max_contour_area")
+    POSITION_COVARIANCE = rospy.get_param("/position_covariance")
+    ORIENTATION_COVARIANCE = rospy.get_param("/orientation_covariance")
+    rospy.loginfo("Updating ros params")
+
+update_rosparams()
 circle_radiuses = dict()
 frame_hsv = None
 
@@ -145,24 +158,8 @@ class VisionDetect:
         self.last_detected_color_pose = (x_img, y_img, theta)
         self.last_detected_color_ts = rospy.get_time()
 
-    # Detect Hough Lines
-    def detectLine(self, minLen = 20, maxLGap = 5):
-        img = self.image.copy()
-        edgeimg = cv2.Canny(img, 100, 200)
-        lines = cv2.HoughLinesP(edgeimg, 1, np.pi/180, minLen,
-                                maxLGap)
-        for line in lines[0]:
-            cv2.line(img, (line[0], line[1]), (line[2], line[3]), (0,0,255), 2)
-        return img
-
     def goal_callback(self, msg):
         self.goal = msg
-
-def img_to_world(coords_img):
-    # TODO: Hardcoded until in lab
-    x = coords_img[0]
-    y = coords_img[1]
-    return x, y
 
 def mouse_cb(event, x, y, flags, params):
     # checking for right mouse clicks
@@ -225,10 +222,6 @@ def get_average_hsv(img_hsv):
     hues = hues[hues > 70]
     return np.mean(hues[np.nonzero(hues)]), np.mean(saturations[np.nonzero(saturations)]), np.mean(values[np.nonzero(values)])
 
-# Given the dominant color, which sphero is it?
-def sphero_from_color(hsv):
-    pass
-
 def main():
     rospy.init_node("tracker")
     rospy.Subscriber("/sphero_names", SpheroNames, sphero_names_cb)
@@ -246,10 +239,14 @@ def main():
         return 
     # <<<< Open Video Stream
 
+    updates = -1
     while not rospy.is_shutdown(): # do work
         if len(detectors_dict.keys()) == 0:
             rospy.sleep(0.1)
             continue
+        elif (CHECK_FOR_UPDATED_PARAMS and updates % 50 == 0): update_rosparams()
+        
+        updates += 1
 
         # Read first frame.
         ok, frame = video.read()
@@ -270,21 +267,19 @@ def main():
         sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
         sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
 
-        thresh = cv2.threshold(sharpen,160,255, cv2.THRESH_BINARY_INV)[1]
+        thresh = cv2.threshold(sharpen,200,255, cv2.THRESH_BINARY_INV)[1]
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
         close = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
 
         cnts = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-        min_area = 1000
-        max_area = 2500
         circle_masks = [] # circles around and including polygon
         poly_masks = [] # polygons themselves
         centers = []
         for c in cnts:
             area = cv2.contourArea(c)
             # print(f" {len(c)} points area {area}")
-            if area > min_area and area < max_area:
+            if area > MIN_CONTOUR_AREA and area < MAX_CONTOUR_AREA:
                 mask = np.zeros((height,width), np.uint8)
                 x,y,w,h = cv2.boundingRect(c)
                 cx, cy = x+(w//2), y+(h//2)
@@ -294,7 +289,7 @@ def main():
 
                 mask = np.zeros((height,width), np.uint8)
                 # cv2.fillPoly(mask, pts=[c], color=(255,255,255))
-                cv2.circle(mask, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.6), (255,255,255), -1)
+                cv2.circle(mask, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.8), (255,255,255), -1)
                 poly_masks.append(mask)
                 
                 for i in range(len(c)):
@@ -303,13 +298,12 @@ def main():
                         x1,y1 = c[0][0]
                     else:
                         x1,y1 = c[i+1][0]
-
                     cv2.line(image, (x0,y0), (x1,y1), (255,0,0), 2)
             #     # ROI = image[y:y+h, x:x+w]
             #     # cv2.imwrite('ROI_{}.png'.format(image_number), ROI)
             #     cv2.rectangle(image, (x, y), (x + w, y + h), (36,255,12), 2)
             #     image_number += 1
-            elif area > min_area:
+            elif area > MIN_CONTOUR_AREA:
                 # print(f"ignored contour area {area}. Too big")
                 pass
 
@@ -325,43 +319,40 @@ def main():
             # print(f"{cx:1.0f}, {cy:1.0f}")
             rim_mask = cv2.bitwise_and(circle_mask, cv2.bitwise_not(poly_mask))
             rim_img = cv2.bitwise_and(frame, frame, mask=rim_mask)
-            if (SHOW_IMAGES): cv2.imshow(f'rim_img_rgb{idx0}', rim_img)
+            # if (SHOW_IMAGES): cv2.imshow(f'rim_img_rgb{idx0}', rim_img)
             rim_img = cv2.cvtColor(rim_img, cv2.COLOR_RGB2HSV)
-            # cv2.imshow('rim_mask', rim_mask)
+            if (SHOW_IMAGES): cv2.imshow('rim_mask', rim_mask)
 
-            for idx, detector in enumerate(detectors_dict.values()):
-                color_mask, color_center, biggest_blob = detector.processColor(rim_img.copy())
-                if (color_center) is not None:
-                    color_id_mask = cv2.bitwise_or(poly_mask, color_mask)
-                    # h,s,v = get_average_hsv(cv2.bitwise_and(frame, frame, mask=color_id_mask))
-                    color_id_hsv = cv2.bitwise_and(frame, frame, mask=color_id_mask)
-                    if (SHOW_IMAGES): cv2.imshow(f'color_id_{idx0}_{idx}', color_id_hsv)
-                    id, mean_hue, _ = get_id_from_hue(cv2.cvtColor(color_id_hsv, cv2.COLOR_RGB2HSV))
-                    if id in detectors_dict.keys():
-                        theta = atan2(-color_center[1] + cy, color_center[0] - cx)
-                        detectors_dict[id].set_detected_position(cx, cy, theta)
-                        print(f"{id} h: {mean_hue} {cx:1.1f}, {cy:1.1f}, {theta:1.1f} blobsize: {biggest_blob:1.1f}")
+
+            # for color_mask, color_center, biggest_blob in processed_detectors:
+            processed_detectors = [detector.processColor(rim_img.copy()) for detector in detectors_dict.values()]
+            color_mask, color_center, biggest_blob = max(processed_detectors, key=lambda x: x[2])
+            if color_center is not None:
+                # color_id_mask = cv2.bitwise_or(poly_mask, color_mask)
+                color_id_mask = cv2.bitwise_or(poly_mask, color_mask)
+                color_id_mask = rim_mask
+                color_id_hsv = cv2.bitwise_and(frame, frame, mask=color_id_mask)
+                id, mean_hue, _ = get_id_from_hue(cv2.cvtColor(color_id_hsv, cv2.COLOR_RGB2HSV))
+                if id in detectors_dict.keys():
+                    # if (SHOW_IMAGES): cv2.imshow(f'color_id_mask_{idx0}', color_id_mask)
+                    if (SHOW_IMAGES): cv2.imshow(f'color_id_{idx0}', color_id_hsv)
+                    theta = atan2(-color_center[1] + cy, color_center[0] - cx)
+                    detectors_dict[id].set_detected_position(cx, cy, theta)
+                    cv2.line(image, (cx, cy), color_center, (0,255,0), 2)
+                    print(f"{id} h: {mean_hue:1.1f} {cx:1.1f}, {cy:1.1f}, {theta:1.1f} blob_color_size: {biggest_blob:1.1f}")
+            else:
+                rejected_img = cv2.bitwise_and(frame, frame, mask=rim_mask)
+                if (SHOW_IMAGES): cv2.imshow(f'rejected_{idx0}', rejected_img)
+                h,s,v = get_average_hsv(cv2.cvtColor(rejected_img, cv2.COLOR_RGB2HSV))
+                print(f"rejected h: {h:1.1f} s: {s:1.1f} v: {v:1.1f} at {cx:1.1f}, {cy:1.1f}")
+
+
+
+
 
             # for idx, detector in enumerate(detectors_dict.values()):
-            #     color_mask, color_center, biggest_blob = detector.processColor(rim_img.copy())
-            #     if (SHOW_IMAGES): cv2.imshow(f'color_mask_{idx0}_{idx}', color_mask)
-            #     if (color_center is not None and biggest_blob > 40):
-            #         theta = atan2(-color_center[1] + cy, color_center[0] - cx)
-            #         cv2.line(image, (color_center[0], color_center[1]), (cx,cy), (255,0,0), 2)
-            #         cv2.circle(rim_img, (color_center[0], color_center[1]), 5, (255,0,0), -1)
-            #         cv2.imshow(f'rim_img', rim_img)
-
-            #         color_id_mask = cv2.bitwise_or(poly_mask, color_mask)
-            #         # h,s,v = get_average_hsv(cv2.bitwise_and(frame, frame, mask=color_id_mask))
-            #         color_id_hsv = cv2.bitwise_and(frame, frame, mask=color_id_mask)
-            #         if (SHOW_IMAGES): cv2.imshow(f'color_id_{idx0}_{idx}', color_id_hsv)
-            #         id = get_id_from_hue(cv2.cvtColor(color_id_hsv, cv2.COLOR_RGB2HSV))
-            #         rospy.loginfo(f"Got id {id} from detector_{detector.sphero_id} blobsize: {biggest_blob}")
-            #         if (id == detector.sphero_id):
-            #             detector.set_detected_position(cx, cy, theta)
-            #     else:
-            #         print(f"{detector.sphero_id} Skipping blob {biggest_blob}")
-            #         pass
+                # color_mask, color_center, biggest_blob = detector.processColor(rim_img.copy())
+                # if (color_center) is not None:
             idx0 += 1
                     
 
@@ -421,12 +412,12 @@ def main():
                     q = quaternion_from_euler(0., 0., offset_theta)
                     p.pose.orientation = Quaternion(*q)
                     p.covariance = np.array([ # ignore covairance between factors, but the way we're doing this we get a lot of jitter, so x and y definitely have some variance. In pixels.
-                        [3., 0., 0., 0., 0., 0.], # pixels
-                        [0., 3., 0., 0., 0., 0.],  # pixels
+                        [POSITION_COVARIANCE, 0., 0., 0., 0., 0.], # pixels
+                        [0., POSITION_COVARIANCE, 0., 0., 0., 0.],  # pixels
                         [0., 0., 1e-6, 0., 0., 0.],
                         [0., 0., 0., 1e-6, 0., 0.],
                         [0., 0., 0., 0., 1e-6, 0.],
-                        [0., 0., 0., 0., 0., 0.1], # radians
+                        [0., 0., 0., 0., 0., ORIENTATION_COVARIANCE], # radians
                         ]).flatten() # TODO
                     tw = TwistWithCovariance() # TODO
                     odom_msg.pose = p
