@@ -42,10 +42,11 @@ def list_vide_ports():
                 available_ports.append(dev_port)
     return available_ports,working_ports
 
-def init_videocapture(channel=0,width=1280, height=720):
+# def init_videocapture(channel=0,width=1280, height=720):
+def init_videocapture(channel=0,width=1280, height=720, scale=2):
     camera = cv2.VideoCapture(channel, cv2.CAP_V4L2)
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, width//2)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height//2)
     camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
     camera.set(cv2.CAP_PROP_FPS, 30)
     return camera

@@ -31,7 +31,7 @@ from interface import IN_LAB
 '''
 Dictionary of Sphero Names (keys) and their corresponding colors (values)
 '''
-from TrackerParams import LOWER_GREEN, TRACK_WITH_CIRCLES, UPPER_GREEN, Sphero_Params_by_ID, Sphero_HSV_Color, Sphero_RGB_Color, TrackerParams, LOWER_WHITE, UPPER_WHITE
+import TrackerParams as tp
 
 '''
 These parameters must be tuned for image size
@@ -42,18 +42,27 @@ These parameters must be tuned for image size
 ''''''
 
 VERBOSE = True
-SHOW_IMAGES = True
+SHOW_IMAGES = False
 CHECK_FOR_UPDATED_PARAMS = True
 
 
-global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE
+global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE
 def update_rosparams():
-    global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE
-    EXPECTED_SPHERO_RADIUS = rospy.get_param("/expected_sphero_radius")
-    MIN_CONTOUR_AREA = rospy.get_param("/min_contour_area")
-    MAX_CONTOUR_AREA = rospy.get_param("/max_contour_area")
-    POSITION_COVARIANCE = rospy.get_param("/position_covariance")
-    ORIENTATION_COVARIANCE = rospy.get_param("/orientation_covariance")
+    global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE
+    EXPECTED_SPHERO_RADIUS = rospy.get_param("/param_server/expected_sphero_radius")
+    MIN_CONTOUR_AREA = rospy.get_param("/param_server/min_contour_area")
+    MAX_CONTOUR_AREA = rospy.get_param("/param_server/max_contour_area")
+    POSITION_COVARIANCE = rospy.get_param("/param_server/position_covariance")
+    ORIENTATION_COVARIANCE = rospy.get_param("/param_server/orientation_covariance")
+    tp.BLUE_HSV = (rospy.get_param("/param_server/blue_h"), rospy.get_param("/param_server/blue_s"), rospy.get_param("/param_server/blue_v"))
+    tp.RED_HSV = (rospy.get_param("/param_server/red_h"), rospy.get_param("/param_server/red_s"), rospy.get_param("/param_server/red_v"))
+    tp.GREEN_HSV = (rospy.get_param("/param_server/green_h"), rospy.get_param("/param_server/green_s"), rospy.get_param("/param_server/green_v"))
+    tp.populate_hsv_dict()
+
+    FWD_H_RANGE = (rospy.get_param("/param_server/fwd_hue_min"), rospy.get_param("/param_server/fwd_hue_max"))
+    FWD_S_RANGE = (rospy.get_param("/param_server/fwd_sat_min"), rospy.get_param("/param_server/fwd_sat_max"))
+    FWD_V_RANGE = (rospy.get_param("/param_server/fwd_val_min"), rospy.get_param("/param_server/fwd_val_max"))
+
     rospy.loginfo("Updating ros params")
 
 update_rosparams()
@@ -67,7 +76,7 @@ TODO: This class obviously needs a refactor
 class VisionDetect:
     def __init__(self, sphero_id=None, imageName=None):
         self.sphero_id = sphero_id
-        self.tracker_params = Sphero_Params_by_ID[sphero_id] if sphero_id is not None else None
+        # self.tracker_params = Sphero_Params_by_ID[sphero_id] if sphero_id is not None else None
         if imageName is not None:
             self.read_image(imageName)
 
@@ -113,19 +122,20 @@ class VisionDetect:
         # print(circle_radiuses)
         return gray_blurred, circles
 
-    def processColor(self, hsv_img, lower=None, upper=None):
+    def processColor(self, hsv_img, lower=None, upper=None, note=""):
         '''
         Produce a mask of a large circle around any the spheros color range. Store result.        
         Returns: The mask or None if colors aren't detected
         '''
         if (lower is None) or (upper is None):
-            lower = self.tracker_params.hsv_lower
-            upper = self.tracker_params.hsv_upper
-            # lower = (self.tracker_params.hsv_lower[0], 0, 240)
-            # upper = (self.tracker_params.hsv_upper[0], 255, 255)
+            lower, upper = tp.hsv_bounds_for_id(self.sphero_id)
+            # lower = self.tracker_params.hsv_lower
+            # upper = self.tracker_params.hsv_upper
             # print(f"{self.sphero_id} lower: {lower} upper: {upper}")
 
         mask = cv2.inRange(hsv_img, lower, upper)
+
+        # cv2.imshow(f"mask_{self.sphero_id}_{note}", cv2.bitwise_and(hsv_img, hsv_img, mask=mask))
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         center = None
@@ -201,7 +211,7 @@ def get_id_from_hue(masked_hsv):
         mean_sat = np.mean(sats[np.nonzero(sats)])
         
         closest_hsv = None
-        for id, hsv in Sphero_HSV_Color.items():
+        for id, hsv in tp.Sphero_HSV_Color.items():
             if not (id in possible_ids): continue
 
             if closest_hsv is None:
@@ -280,17 +290,21 @@ def main():
             area = cv2.contourArea(c)
             # print(f" {len(c)} points area {area}")
             if area > MIN_CONTOUR_AREA and area < MAX_CONTOUR_AREA:
-                mask = np.zeros((height,width), np.uint8)
                 x,y,w,h = cv2.boundingRect(c)
                 cx, cy = x+(w//2), y+(h//2)
-                cv2.circle(mask, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
-                circle_masks.append(mask)
+                mask0 = np.zeros((height,width), np.uint8)
+                cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.8), (255,255,255), -1)
+                mask1 = np.zeros((height,width), np.uint8)
+                cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
+                circle_masks.append(cv2.bitwise_and(cv2.bitwise_not(mask0), mask1))
                 centers.append((cx,cy))
 
-                mask = np.zeros((height,width), np.uint8)
-                # cv2.fillPoly(mask, pts=[c], color=(255,255,255))
-                cv2.circle(mask, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.8), (255,255,255), -1)
-                poly_masks.append(mask)
+                mask0 = np.zeros((height,width), np.uint8)
+                cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.4), (255,255,255), -1)
+                # cv2.fillPoly(mask0, pts=[c], color=(255,255,255))
+                mask1 = np.zeros((height,width), np.uint8)
+                cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.0), (255,255,255), -1)
+                poly_masks.append(cv2.bitwise_and(cv2.bitwise_not(mask0), mask1))
                 
                 for i in range(len(c)):
                     x0,y0 = c[i][0]
@@ -315,67 +329,47 @@ def main():
         # print(f"centers {centers} n_circles {len(circle_masks)} n_polys {len(poly_masks)}")
         idx0 = 0
         for circle_mask, poly_mask, (cx, cy) in zip(circle_masks, poly_masks, centers):
-            # print("=" * 60)
-            # print(f"{cx:1.0f}, {cy:1.0f}")
-            rim_mask = cv2.bitwise_and(circle_mask, cv2.bitwise_not(poly_mask))
-            rim_img = cv2.bitwise_and(frame, frame, mask=rim_mask)
-            # if (SHOW_IMAGES): cv2.imshow(f'rim_img_rgb{idx0}', rim_img)
+            rim_img = cv2.bitwise_and(frame, frame, mask=circle_mask)
             rim_img = cv2.cvtColor(rim_img, cv2.COLOR_RGB2HSV)
-            if (SHOW_IMAGES): cv2.imshow('rim_mask', rim_mask)
+            color_id_mask = poly_mask
+            color_id_img = cv2.bitwise_and(frame, frame, mask=color_id_mask)
+            if (SHOW_IMAGES): cv2.imshow(f'color_id_{idx0}', color_id_img)
+            if (SHOW_IMAGES): cv2.imshow(f'rim_img_{idx0}', rim_img)
+            color_id_hsv = cv2.cvtColor(color_id_img, cv2.COLOR_RGB2HSV)
 
+            id, mean_hue, mean_sat = get_id_from_hue(cv2.cvtColor(color_id_hsv, cv2.COLOR_RGB2HSV))
+            print(f"{idx0} {id} hsv: ({mean_hue:1.1f} {mean_sat:1.1f} d/c)")
+            if id in detectors_dict.keys():
+                # now use a rim mask to grab the bright outer light and use that for theta
+                    forward_mask, forward_center, forward_blob = detectors_dict[id].processColor(rim_img.copy(), lower=(FWD_H_RANGE[0], FWD_S_RANGE[0], FWD_V_RANGE[0]), upper=(FWD_H_RANGE[1], FWD_S_RANGE[1], FWD_V_RANGE[1]), note="fwd")
+                    if (forward_center is not None):
+                        theta = atan2(-forward_center[1] + cy, forward_center[0] - cx)
+                        detectors_dict[id].set_detected_position(cx, cy, theta)
 
-            # for color_mask, color_center, biggest_blob in processed_detectors:
-            processed_detectors = [detector.processColor(rim_img.copy()) for detector in detectors_dict.values()]
-            color_mask, color_center, biggest_blob = max(processed_detectors, key=lambda x: x[2])
-            if color_center is not None:
-                # color_id_mask = cv2.bitwise_or(poly_mask, color_mask)
-                color_id_mask = cv2.bitwise_or(poly_mask, color_mask)
-                color_id_mask = rim_mask
-                color_id_hsv = cv2.bitwise_and(frame, frame, mask=color_id_mask)
-                id, mean_hue, _ = get_id_from_hue(cv2.cvtColor(color_id_hsv, cv2.COLOR_RGB2HSV))
-                if id in detectors_dict.keys():
-                    # if (SHOW_IMAGES): cv2.imshow(f'color_id_mask_{idx0}', color_id_mask)
-                    if (SHOW_IMAGES): cv2.imshow(f'color_id_{idx0}', color_id_hsv)
-                    theta = atan2(-color_center[1] + cy, color_center[0] - cx)
-                    detectors_dict[id].set_detected_position(cx, cy, theta)
-                    cv2.line(image, (cx, cy), color_center, (0,255,0), 2)
-                    print(f"{id} h: {mean_hue:1.1f} {cx:1.1f}, {cy:1.1f}, {theta:1.1f} blob_color_size: {biggest_blob:1.1f}")
-            else:
-                rejected_img = cv2.bitwise_and(frame, frame, mask=rim_mask)
-                if (SHOW_IMAGES): cv2.imshow(f'rejected_{idx0}', rejected_img)
-                h,s,v = get_average_hsv(cv2.cvtColor(rejected_img, cv2.COLOR_RGB2HSV))
-                print(f"rejected h: {h:1.1f} s: {s:1.1f} v: {v:1.1f} at {cx:1.1f}, {cy:1.1f}")
-
-
-
-
-
-            # for idx, detector in enumerate(detectors_dict.values()):
-                # color_mask, color_center, biggest_blob = detector.processColor(rim_img.copy())
-                # if (color_center) is not None:
             idx0 += 1
                     
 
         cv2.imshow('image', image)
+        cv2.imshow('frame_hsv', frame_hsv)
         if cv2.waitKey(1) & 0xFF == ord('q'): # if press SPACE bar
             rospy.signal_shutdown("Quit")
             break
 
-        if (SHOW_IMAGES):
+        # if (SHOW_IMAGES):
             # cv2.setMouseCallback('image', mouse_cb)
-            cv2.setMouseCallback('rim_img_rgb', mouse_cb)
+        cv2.setMouseCallback('frame_hsv', mouse_cb)
 
-            if (ekf_pose2d):
-                efk_frame = frame.copy()
-                for sphero_id, (x,y,theta) in ekf_pose2d.items():
-                    if (x > 0 and y > 0):
-                        cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
-                        draw_theta = theta
-                        cv2.line(efk_frame, (int(x), int(y)), (int(x+15*np.cos(draw_theta)), int(y-15*np.sin(draw_theta))), (0,0,255), 2)
-                
-                for pose2d in goal_pose2d.values():
-                    cv2.circle(efk_frame, (int(pose2d.x), int(pose2d.y)), 25, (255,255,255), -1)
-                cv2.imshow("tracked", efk_frame)
+        if (ekf_pose2d):
+            efk_frame = frame.copy()
+            for sphero_id, (x,y,theta) in ekf_pose2d.items():
+                if (x > 0 and y > 0):
+                    cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
+                    draw_theta = theta
+                    cv2.line(efk_frame, (int(x), int(y)), (int(x+15*np.cos(draw_theta)), int(y-15*np.sin(draw_theta))), (0,0,255), 2)
+            
+            for pose2d in goal_pose2d.values():
+                cv2.circle(efk_frame, (int(pose2d.x), int(pose2d.y)), 25, (255,255,255), -1)
+            cv2.imshow("tracked", efk_frame)
 
         # Plot spheros NOTE: Out of place, should be its own node probably
         plot_spheros([ekf_pose2d[key] for key in ekf_pose2d.keys()], [key for key in ekf_pose2d.keys()], ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])

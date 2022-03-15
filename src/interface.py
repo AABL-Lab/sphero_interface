@@ -47,17 +47,18 @@ IN_LAB = False if os.environ.get("IN_LAB") is None else True
 print(f"IN_LAB: {IN_LAB}")
 
 spheros = {
+    "EC:73:F2:19:0E:CA": None,
+    "CA:64:39:FC:74:FB": None,
+    "D1:FC:A0:92:D5:19": None,
+    #
     # "D9:81:9E:B8:AD:DB": None,
     # "F8:48:B1:E1:1E:2D": None,
     # "E9:84:4B:AD:58:EF": None,
     # "F6:24:6F:6D:B1:2D": None,
     # "DC:6A:87:40:AA:AD": None,
-    "EC:73:F2:19:0E:CA": None,
-    "CA:64:39:FC:74:FB": None,
     # "FD:B5:2E:2B:2A:3C": None,
     # "FB:E7:20:44:74:E4": None,
     # "D7:98:82:CD:1F:EA": None,
-    "D1:FC:A0:92:D5:19": None,
     # "C8:2E:9A:E9:37:16": None,
     # "D1:7E:07:ED:D1:37": None,
     # "CD:7D:FA:67:54:AB": None,

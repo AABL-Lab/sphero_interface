@@ -4,6 +4,7 @@ TODO: This should go into a rosparam server
 '''
 from typing import NamedTuple
 from matplotlib.colors import rgb_to_hsv
+import rospy
 
 class TrackerParams(NamedTuple):
     hsv_lower: tuple
@@ -24,7 +25,7 @@ MAGENTA_HSV = (140, 70, 200)
 YELLOW_RGB = (255, 100, 100)
 YELLOW_HSV = (165, 2, 255)
 
-GREEN_RGB = (50, 255, 50)
+GREEN_RGB = (0, 255, 0)
 GREEN_HSV = (145, 30, 120)
 
 WHITE_RGB = (255, 255, 255)
@@ -50,16 +51,27 @@ Sphero_RGB_Color = {
     "sc9": RED_RGB,
 }
 
-# How the colors appear (done by hand)
+Sphero_RGB_Color_Strings = {
+    "sd9": "red", # jss home
+    "sf8": "blue", # jss home
+    "sec": "red", # in lab
+    "sca": "blue", # in lab
+    "sd1": "green", # in lab
+}
+
 Sphero_HSV_Color = dict()
-for sphero_id, color in Sphero_RGB_Color.items():
-    if (color == RED_RGB): Sphero_HSV_Color[sphero_id] = RED_HSV
-    elif (color == BLUE_RGB): Sphero_HSV_Color[sphero_id] = BLUE_HSV
-    elif (color == YELLOW_RGB): Sphero_HSV_Color[sphero_id] = YELLOW_HSV
-    elif (color == MAGENTA_RGB): Sphero_HSV_Color[sphero_id] = MAGENTA_HSV
-    elif (color == GREEN_RGB): Sphero_HSV_Color[sphero_id] = GREEN_HSV
-    else: Sphero_HSV_Color[sphero_id] = (-1,-1,-1)
-    
+def populate_hsv_dict():
+    Sphero_HSV_Color.clear()
+    # How the colors appear (done by hand)
+    for sphero_id, color in Sphero_RGB_Color.items():
+        if (color == RED_RGB): Sphero_HSV_Color[sphero_id] = RED_HSV
+        elif (color == BLUE_RGB): Sphero_HSV_Color[sphero_id] = BLUE_HSV
+        elif (color == YELLOW_RGB): Sphero_HSV_Color[sphero_id] = YELLOW_HSV
+        elif (color == MAGENTA_RGB): Sphero_HSV_Color[sphero_id] = MAGENTA_HSV
+        elif (color == GREEN_RGB): Sphero_HSV_Color[sphero_id] = GREEN_HSV
+        else: Sphero_HSV_Color[sphero_id] = (-1,-1,-1)
+populate_hsv_dict()
+
 Sphero_Params_by_ID = {
     "sd9": TrackerParams(hsv_lower=(0, 0, 0), hsv_upper=(255, 255, 255)),
     "sf8": TrackerParams(hsv_lower=(0, 0, 0), hsv_upper=(255, 255, 255)),
@@ -102,3 +114,12 @@ UPPER_GREEN = (min(255, hsv[0] + hue_range), min(255, hsv[1] + sat_range), min(2
 hsv = WHITE_HSV
 LOWER_WHITE = (max(0, hsv[0] - hue_range), max(0, hsv[1] - sat_range), max(0, hsv[2] - val_range))
 UPPER_WHITE = (min(255, hsv[0] + hue_range), min(255, hsv[1] + sat_range), min(255, hsv[2] + val_range)) 
+
+def hsv_bounds_for_id(sphero_id):
+    hsv = Sphero_HSV_Color[sphero_id]
+    hue_range = (rospy.get_param("/param_server/hue_min"), rospy.get_param("/param_server/hue_max"))
+    sat_range = (rospy.get_param("/param_server/sat_min"), rospy.get_param("/param_server/sat_max"))
+    val_range = (rospy.get_param("/param_server/val_min"), rospy.get_param("/param_server/val_max"))
+    hsv_lower = (max(0, hsv[0] - hue_range[0]), max(0, hsv[1] - sat_range[0]), max(0, hsv[2] - val_range[0]))
+    hsv_upper = (min(255, hsv[0] + hue_range[1]), min(255, hsv[1] + sat_range[1]), min(255, hsv[2] + val_range[1]))
+    return (hsv_lower, hsv_upper)
