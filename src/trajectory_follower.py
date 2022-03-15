@@ -20,50 +20,13 @@ from tf.transformations import euler_from_quaternion
 
 from utils import pose2d_distance, posewithcovariancestamped_to_pose2d
 
-VERBOSE = False
+VERBOSE = True
 
 UPDATE_PERIOD = 0.1 # seconds for control loop
 SPEED = 30
 GOAL_THRESHOLD = 50 # How far we can be from a goal before its considered achieved
 TEST_SQUARE_LEN = 200
 LOOP_TRAJECTORY = False
-
-
-    # def trajectory_step(self):
-    #     if (self.is_complete()): return
-
-    #     goal_pose = self.path_x_y[self.trajectory_idx]
-    #     self.goal_pub.publish(Pose2D(goal_pose.x, goal_pose.y, 0))
-    #     distance_to_goal = pose2d_distance(self.pose, goal_pose)
-    #     print(f"distance_to_goal {distance_to_goal:1.2f}")
-    #     if (distance_to_goal < GOAL_THRESHOLD):
-    #         self.trajectory_idx += 1
-    #         if (self.trajectory_idx >= len(self.path_x_y)): # done
-    #             self.path_complete = True
-    #             if (LOOP_TRAJECTORY):
-    #                 self.trajectory_idx = 0
-    #         else: # new goal
-    #             goal_pose = self.path_x_y[self.trajectory_idx]
-    #             print(f"new goal {goal_pose.x:1.2f} {goal_pose.y:1.2f}")
-
-
-    #     if (self.path_complete):
-    #         cmd = HeadingStamped()
-    #     else:
-    #         cmd = self.get_command(self.pose, goal_pose)
-    #     # cmd = HeadingStamped()
-    #     command_history.append(cmd)
-    #     self.pub.publish(cmd)
-
-    # def random_orientation(self):
-    #     '''
-    #     Randomly orient the sphero
-    #     '''
-    #     cmd = HeadingStamped()
-    #     cmd.v = 10
-    #     cmd.theta = random.randint(0, 360)
-        
-    #     self.pub.publish(cmd)
 
 '''
 Parent class that handles all subscribers and publishers
@@ -92,11 +55,11 @@ class TrajectoryFollowerGroup():
                 pass
             else:
                 self.cmd_publishers[name] = rospy.Publisher(name+"/cmd", HeadingStamped, queue_size=1)
-                self.pose_subscribers[name] = rospy.Subscriber(name+"_ekf/odom_combined", PoseWithCovarianceStamped, self.ekf_callback, callback_args=name)
+                self.pose_subscribers[name] = rospy.Subscriber(name+"/pose", Pose2D, self.pose_callback, callback_args=name)
                 self.goal_subscribers[name] = rospy.Subscriber(name+"/goal", PositionGoal, self.goal_callback, callback_args=name)
                 self.initial_heading_subscribers[name] = rospy.Subscriber(name+"/initial_heading", HeadingStamped, self.initial_heading_callback, callback_args=name)
 
-    def ekf_callback(self, msg, name): self.sphero_poses[name] = msg
+    def pose_callback(self, msg, name): self.sphero_poses[name] = msg
     def goal_callback(self, msg, name): self.goal_poses[name] = msg.goal # TODO: this should either have name as a callback arg or use the name in the messages, not both
     def initial_heading_callback(self, msg, name): self.initial_headings[name] = msg.theta
 
@@ -109,7 +72,8 @@ class TrajectoryFollowerGroup():
                 rospy.logwarn("Goal, but no initial heading for " + name)
                 continue
 
-            cmd = self.cmd_for(posewithcovariancestamped_to_pose2d(self.sphero_poses[name]), goal)
+            cmd = self.cmd_for(self.sphero_poses[name], goal, self.initial_headings[name])
+            # cmd = self.cmd_for(self.sphero_poses[name], goal)
             self.cmd_publishers[name].publish(cmd)
 
     def cmd_for(self, curr_pose: Pose2D, goal_pose: Pose2D, initial_heading=0):
@@ -120,12 +84,12 @@ class TrajectoryFollowerGroup():
             # Ys need to be flipped because of image coordinate system
             theta_goal = (math.atan2((-1*goal_pose.y) + curr_pose.y, goal_pose.x - curr_pose.x)) # NOTE: afaik we can't reset the sphero's heading through bluetooth
             
-            # print(f"goal_to_theta {theta_goal:1.2f} th0 {initial_heading:1.2f}")
-            theta_goal = initial_heading - theta_goal
+            if VERBOSE: rospy.loginfo(f"goal_to_theta {theta_goal:1.2f} th0 {initial_heading:1.2f}")
+            # theta_goal = initial_heading - theta_goal
 
 
-            theta_goal = theta_goal
-            current_theta_local = initial_heading - curr_pose.theta
+            current_theta_local = curr_pose.theta - initial_heading
+            # current_theta_local = curr_pose.theta
 
             while theta_goal < 0: theta_goal += 2*math.pi
             while theta_goal > 2*math.pi: theta_goal -= 2*math.pi
@@ -133,12 +97,12 @@ class TrajectoryFollowerGroup():
             while current_theta_local > 2*math.pi: current_theta_local -= 2*math.pi
 
             diff_theta = abs(theta_goal - current_theta_local)
-            # print(f"diff_theta {diff_theta:1.2f}")
+            if VERBOSE: rospy.loginfo(f"diff_theta {diff_theta:1.2f}")
 
             cmd.v = SPEED if diff_theta < (math.pi / 4.) else 0 # Only move forward if we're mostly aligned with the goal
-            cmd.theta = rad2deg(theta_goal)
+            cmd.theta = rad2deg(theta_goal) # correct for offset initial heading in cmd
         
-        if VERBOSE: rospy.loginfo(f"current {curr_pose.x:1.2f} {curr_pose.y:1.2f} {curr_pose.theta:1.2f} goal {goal_pose.x:1.2f} {goal_pose.y:1.2f} {goal_pose.theta:1.2f} cmd {cmd.v:1.2f} {cmd.theta:1.2f}")
+        if VERBOSE: rospy.loginfo(f"current x:{curr_pose.x:1.1f} y:{curr_pose.y:1.1f} theta:{curr_pose.theta:1.1f} goal {goal_pose.x:1.1f} {goal_pose.y:1.1f} {goal_pose.theta:1.1f} cmd {cmd.v:1.1f} {cmd.theta:1.1f}")
         return cmd
 
 '''

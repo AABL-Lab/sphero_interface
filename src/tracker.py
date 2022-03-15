@@ -341,10 +341,12 @@ def main():
             print(f"{idx0} {id} hsv: ({mean_hue:1.1f} {mean_sat:1.1f} d/c)")
             if id in detectors_dict.keys():
                 # now use a rim mask to grab the bright outer light and use that for theta
-                    forward_mask, forward_center, forward_blob = detectors_dict[id].processColor(rim_img.copy(), lower=(FWD_H_RANGE[0], FWD_S_RANGE[0], FWD_V_RANGE[0]), upper=(FWD_H_RANGE[1], FWD_S_RANGE[1], FWD_V_RANGE[1]), note="fwd")
-                    if (forward_center is not None):
-                        theta = atan2(-forward_center[1] + cy, forward_center[0] - cx)
-                        detectors_dict[id].set_detected_position(cx, cy, theta)
+                forward_mask, forward_center, forward_blob = detectors_dict[id].processColor(rim_img.copy(), lower=(FWD_H_RANGE[0], FWD_S_RANGE[0], FWD_V_RANGE[0]), upper=(FWD_H_RANGE[1], FWD_S_RANGE[1], FWD_V_RANGE[1]), note="fwd")
+                if (forward_center is not None):
+                    theta = atan2(-forward_center[1] + cy, forward_center[0] - cx)
+                    detectors_dict[id].set_detected_position(cx, cy, theta)
+                elif SHOW_IMAGES:
+                    cv2.imshow(f'failed_forward_mask_{idx0}', cv2.bitwise_and(frame, frame, mask=forward_mask))
 
             idx0 += 1
                     

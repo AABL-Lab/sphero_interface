@@ -1,0 +1,5 @@
+expected_sphero_radius: 33
+min_contour_area: 1000
+max_contour_area: 2500
+position_covariance: 3
+orientation_covariance: 0.1

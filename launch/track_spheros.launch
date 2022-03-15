@@ -1,47 +1,4 @@
 <launch>
-    <node name="interface" pkg="sphero_interface" type="interface.py" output="screen"/>
     <node name="tracker" pkg="sphero_interface" type="tracker.py"/>
-
-
     <include file="$(find sphero_interface)/launch/ekf_only.launch" />
-
-<!-- 
-    <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="sf8_ekf">
-        <param name="output_frame" value="odom_combined"/>
-        <param name="base_footprint_frame" value="base_footprint"/>
-        <param name="freq" value="30.0"/>
-        <param name="sensor_timeout" value="1.0"/>  
-        <param name="odom_used" value="true"/>
-        <param name="imu_used" value="true"/>
-        <param name="vo_used" value="false"/>/
-        <remap from="imu_data" to="sf8/imu_data" />
-        <remap from="odom" to="sf8/odom" />
-    </node>
-    <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="sd9_ekf">
-        <param name="output_frame" value="odom_combined"/>
-        <param name="base_footprint_frame" value="base_footprint"/>
-        <param name="freq" value="30.0"/>
-        <param name="sensor_timeout" value="1.0"/>  
-        <param name="odom_used" value="true"/>
-        <param name="imu_used" value="true"/>
-        <param name="vo_used" value="false"/>
-        <remap from="imu_data" to="sd9/imu_data" />
-        <remap from="odom" to="sd9/odom" />
-    </node> -->
-
-    <!-- <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="se9_ekf">
-        <param name="output_frame" value="odom_combined"/>
-        <param name="base_footprint_frame" value="base_footprint"/>
-        <param name="freq" value="30.0"/>
-        <param name="sensor_timeout" value="1.0"/>  
-        <param name="odom_used" value="true"/>
-        <param name="imu_used" value="true"/>
-        <param name="vo_used" value="false"/>
-        <remap from="imu_data" to="se9/imu_data" />
-        <remap from="odom" to="se9/odom" />
-    </node> -->
-
-
-    <!-- <node name="fleet_attention_manager" pkg="transfer_entropy" type="fleet_attention_manager.py"/>
-    <node name="calculate_transfer_entropy_server" pkg="transfer_entropy" type="calculate_transfer_entropy_server.py"/> -->
 </launch>
