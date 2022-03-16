@@ -22,7 +22,7 @@ from utils import pose2d_distance, posewithcovariancestamped_to_pose2d
 
 VERBOSE = True
 
-UPDATE_PERIOD = 0.1 # seconds for control loop
+UPDATE_PERIOD = 4 # seconds for control loop
 SPEED = 30
 GOAL_THRESHOLD = 50 # How far we can be from a goal before its considered achieved
 TEST_SQUARE_LEN = 200
@@ -78,30 +78,29 @@ class TrajectoryFollowerGroup():
 
     def cmd_for(self, curr_pose: Pose2D, goal_pose: Pose2D, initial_heading=0):
         cmd = HeadingStamped()
-        if (pose2d_distance(curr_pose, goal_pose) < GOAL_THRESHOLD):
+        distance_to_goal = pose2d_distance(curr_pose, goal_pose)
+        if (distance_to_goal < GOAL_THRESHOLD):
             pass
         else:
             # Ys need to be flipped because of image coordinate system
             theta_goal = (math.atan2((-1*goal_pose.y) + curr_pose.y, goal_pose.x - curr_pose.x)) # NOTE: afaik we can't reset the sphero's heading through bluetooth
             
-            if VERBOSE: rospy.loginfo(f"goal_to_theta {theta_goal:1.2f} th0 {initial_heading:1.2f}")
-            # theta_goal = initial_heading - theta_goal
+            if VERBOSE: rospy.loginfo(f"target {theta_goal:1.1f} current {curr_pose.theta:1.1f} th0 {initial_heading:1.1f}. distance_to_goal {distance_to_goal:1.2f}")
+            theta_goal = theta_goal - initial_heading
+            curr_heading = curr_pose.theta - initial_heading
+            if VERBOSE: rospy.loginfo(f"local_target {theta_goal:1.1f} current_local {curr_heading:1.1f}")
 
+            diff_theta = theta_goal - curr_heading
+            # while diff_theta < 0: diff_theta += 2*math.pi
+            # while diff_theta > 2*math.pi: diff_theta -= 2*math.pi
+            cmd_rel_initial_heading = initial_heading - diff_theta
+            if VERBOSE: rospy.loginfo(f"rel dtheta {diff_theta:1.2f} from goal. Subbing intitial heading gives {cmd_rel_initial_heading:1.2f}")
 
-            current_theta_local = curr_pose.theta - initial_heading
-            # current_theta_local = curr_pose.theta
-
-            while theta_goal < 0: theta_goal += 2*math.pi
-            while theta_goal > 2*math.pi: theta_goal -= 2*math.pi
-            while current_theta_local < 0: current_theta_local += 2*math.pi
-            while current_theta_local > 2*math.pi: current_theta_local -= 2*math.pi
-
-            diff_theta = abs(theta_goal - current_theta_local)
-            if VERBOSE: rospy.loginfo(f"diff_theta {diff_theta:1.2f}")
-
-            cmd.v = SPEED if diff_theta < (math.pi / 4.) else 0 # Only move forward if we're mostly aligned with the goal
-            cmd.theta = rad2deg(theta_goal) # correct for offset initial heading in cmd
+            cmd.v = 0 #SPEED if abs(diff_theta) < (math.pi / 3.) else 0 # Only move forward if we're mostly aligned with the goal
+            cmd.theta = rad2deg(diff_theta) #rad2deg(cmd_rel_initial_heading) # correct for offset initial heading in cmd
         
+        if cmd.theta < 0: cmd.theta += 360
+        if cmd.theta > 360: cmd.theta -= 360
         if VERBOSE: rospy.loginfo(f"current x:{curr_pose.x:1.1f} y:{curr_pose.y:1.1f} theta:{curr_pose.theta:1.1f} goal {goal_pose.x:1.1f} {goal_pose.y:1.1f} {goal_pose.theta:1.1f} cmd {cmd.v:1.1f} {cmd.theta:1.1f}")
         return cmd
 

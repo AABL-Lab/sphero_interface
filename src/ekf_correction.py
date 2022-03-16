@@ -38,8 +38,8 @@ def ekf_callback(msg: PoseWithCovarianceStamped, name: str):
 
     r,p,y = euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
     offset_heading = initial_headings[name] + y
-    while (offset_heading > math.pi): offset_heading -= 2*math.pi
-    while (offset_heading < -math.pi): offset_heading += 2*math.pi
+    while (offset_heading > 2*math.pi): offset_heading -= 2*math.pi
+    while (offset_heading < 0): offset_heading += 2*math.pi
 
     corrected_ekf_pubs[name].publish(Pose2D(msg.pose.pose.position.x, msg.pose.pose.position.y, offset_heading))
 

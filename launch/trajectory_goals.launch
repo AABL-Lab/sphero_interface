@@ -1,0 +1,4 @@
+<launch>
+    <node name="trajectory_follower" pkg="sphero_interface" type="trajectory_follower.py" output="screen"/>
+    <node name="goal_generator" pkg="sphero_interface" type="goal_generator.py" output="screen"/>
+</launch>

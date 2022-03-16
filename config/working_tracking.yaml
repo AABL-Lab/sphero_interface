@@ -1,32 +1,32 @@
 !!python/object/new:dynamic_reconfigure.encoding.Config
 dictitems:
-  blue_h: 109
+  blue_h: 122
   blue_s: 247
   blue_v: 125
-  expected_sphero_radius: 15
+  expected_sphero_radius: 18
   fwd_hue_max: 255
   fwd_hue_min: 0
   fwd_sat_max: 255
   fwd_sat_min: 0
   fwd_val_max: 255
   fwd_val_min: 220
-  green_h: 118
-  green_s: 204
+  green_h: 130
+  green_s: 212
   green_v: 125
   groups: !!python/object/new:dynamic_reconfigure.encoding.Config
     dictitems:
-      blue_h: 109
+      blue_h: 122
       blue_s: 247
       blue_v: 125
-      expected_sphero_radius: 15
+      expected_sphero_radius: 18
       fwd_hue_max: 255
       fwd_hue_min: 0
       fwd_sat_max: 255
       fwd_sat_min: 0
       fwd_val_max: 255
       fwd_val_min: 220
-      green_h: 118
-      green_s: 204
+      green_h: 130
+      green_s: 212
       green_v: 125
       groups: !!python/object/new:dynamic_reconfigure.encoding.Config
         state: []
@@ -41,8 +41,8 @@ dictitems:
         state: []
       parent: 0
       position_covariance: 3.0
-      red_h: 140
-      red_s: 206
+      red_h: 144
+      red_s: 212
       red_v: 118
       sat_max: 10
       sat_min: 10
@@ -57,8 +57,8 @@ dictitems:
   min_contour_area: 100
   orientation_covariance: 0.1
   position_covariance: 3.0
-  red_h: 140
-  red_s: 206
+  red_h: 144
+  red_s: 212
   red_v: 118
   sat_max: 10
   sat_min: 10
