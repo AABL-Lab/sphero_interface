@@ -41,14 +41,14 @@ These parameters must be tuned for image size
 # upper and lower hsv bounds for color extraction
 ''''''
 
-VERBOSE = True
-SHOW_IMAGES = False
 CHECK_FOR_UPDATED_PARAMS = True
 
 
-global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE
+global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE, VERBOSE, SHOW_IMAGES
 def update_rosparams():
-    global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE
+    global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE, VERBOSE, SHOW_IMAGES
+    VERBOSE = rospy.get_param('/param_server/verbose', False)
+    SHOW_IMAGES = rospy.get_param('/param_server/show_pipeline', False)
     EXPECTED_SPHERO_RADIUS = rospy.get_param("/param_server/expected_sphero_radius")
     MIN_CONTOUR_AREA = rospy.get_param("/param_server/min_contour_area")
     MAX_CONTOUR_AREA = rospy.get_param("/param_server/max_contour_area")
@@ -338,7 +338,7 @@ def main():
             color_id_hsv = cv2.cvtColor(color_id_img, cv2.COLOR_RGB2HSV)
 
             id, mean_hue, mean_sat = get_id_from_hue(cv2.cvtColor(color_id_hsv, cv2.COLOR_RGB2HSV))
-            rospy.loginfo(f"{idx0} {id} hsv: ({mean_hue:1.1f} {mean_sat:1.1f} d/c)")
+            if VERBOSE: rospy.loginfo(f"{idx0} {id} hsv: ({mean_hue:1.1f} {mean_sat:1.1f} d/c)")
             if id in detectors_dict.keys():
                 # now use a rim mask to grab the bright outer light and use that for theta
                 forward_mask, forward_center, forward_blob = detectors_dict[id].processColor(rim_img.copy(), lower=(FWD_H_RANGE[0], FWD_S_RANGE[0], FWD_V_RANGE[0]), upper=(FWD_H_RANGE[1], FWD_S_RANGE[1], FWD_V_RANGE[1]), note="fwd")

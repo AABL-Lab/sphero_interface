@@ -17,6 +17,7 @@ from geometry_msgs.msg import Quaternion as RosQuaternion
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 import rospy
+import rosnode
 import traceback
 import random
 from IPython import embed
@@ -204,9 +205,14 @@ class WrappedSphero(Sphero):
 
         # cap inputs
         t, v, theta = self.cmd.t, self.cmd.v, self.cmd.theta
-        if (time() - t > 3.0 and v > 0):
-            print("forcing 0 velocity due to stale command.")
+        if (time() - t > 3.0):
             self.cmd = HeadingStamped()
+            if (v > 0):
+                self.cmd.v = 0
+                print("forcing 0 velocity due to stale command.")
+            if (theta > 0 and "/tracker" not in rosnode.get_node_names()):
+                self.cmd.theta = 0
+                rospy.loginfo("No tracker so forcing theta to 0")
         else:
             rospy.loginfo(f"{self.name} sending command: {v:1.2f} {theta:1.2f}")
 

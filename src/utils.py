@@ -17,6 +17,16 @@ def speed_to_mps(speed):
     '''
     return (speed/255) * 2.01168 # max speed (4.5 miles per hour)
 
+def cap_0_to_2pi(angle):
+    while (angle > 2*math.pi): angle -= 2*math.pi
+    while (angle < 0): angle += 2*math.pi
+    return angle
+
+def cap_0_to_360(angle):
+    while (angle > 360): angle -= 360
+    while (angle < 0): angle += 360
+    return angle
+
 def list_vide_ports():
     """
     Test the ports and returns a tuple with the available ports and the ones that are working.
