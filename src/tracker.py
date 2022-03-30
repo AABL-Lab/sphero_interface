@@ -11,9 +11,10 @@ import traceback
 from turtle import circle
 
 from IPython import embed
-from torch import bitwise_not
+from torch import bitwise_not, threshold
 from plot_state import plot_spheros
 import utils
+import time
 
 import rospy
 from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped, PoseWithCovariance, TwistWithCovariance, Pose, Twist, Point, Quaternion
@@ -44,9 +45,10 @@ These parameters must be tuned for image size
 CHECK_FOR_UPDATED_PARAMS = True
 
 
-global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE, VERBOSE, SHOW_IMAGES
+global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE, VERBOSE, SHOW_IMAGES, LOWER_THRESHOLD, UPPER_THRESHOLD, NINE_SHARPEN_KERNEL, BLUR_KERNEL_SIZE, MORPH_RECT_SIZE
 def update_rosparams():
-    global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE, VERBOSE, SHOW_IMAGES
+    global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE, VERBOSE, SHOW_IMAGES, LOWER_THRESHOLD, UPPER_THRESHOLD, NINE_SHARPEN_KERNEL, BLUR_KERNEL_SIZE, MORPH_RECT_SIZE
+
     VERBOSE = rospy.get_param('/param_server/verbose', False)
     SHOW_IMAGES = rospy.get_param('/param_server/show_pipeline', False)
     EXPECTED_SPHERO_RADIUS = rospy.get_param("/param_server/expected_sphero_radius")
@@ -54,6 +56,14 @@ def update_rosparams():
     MAX_CONTOUR_AREA = rospy.get_param("/param_server/max_contour_area")
     POSITION_COVARIANCE = rospy.get_param("/param_server/position_covariance")
     ORIENTATION_COVARIANCE = rospy.get_param("/param_server/orientation_covariance")
+
+    # threshold values for brightness
+    NINE_SHARPEN_KERNEL = rospy.get_param("/param_server/nine_sharpen_kernel", True)
+    BLUR_KERNEL_SIZE = rospy.get_param("/param_server/blur_kernel_size")
+    MORPH_RECT_SIZE = rospy.get_param("/param_server/morph_rect_size")
+    LOWER_THRESHOLD = rospy.get_param("/param_server/lower_threshold")
+    UPPER_THRESHOLD = rospy.get_param("/param_server/upper_threshold")
+
     tp.BLUE_HSV = (rospy.get_param("/param_server/blue_h"), rospy.get_param("/param_server/blue_s"), rospy.get_param("/param_server/blue_v"))
     tp.RED_HSV = (rospy.get_param("/param_server/red_h"), rospy.get_param("/param_server/red_s"), rospy.get_param("/param_server/red_v"))
     tp.GREEN_HSV = (rospy.get_param("/param_server/green_h"), rospy.get_param("/param_server/green_s"), rospy.get_param("/param_server/green_v"))
@@ -199,7 +209,6 @@ def sphero_names_cb(msg):
 # Given the mask, whats the dominant color in expected led grid region?
 def get_id_from_hue(masked_hsv):
     possible_ids = detectors_dict.keys()
-
     closest_id = None
     mean_hue = -1
     mean_sat = -1
@@ -250,6 +259,7 @@ def main():
     # <<<< Open Video Stream
 
     updates = -1
+    start_time = time.time()
     while not rospy.is_shutdown(): # do work
         if len(detectors_dict.keys()) == 0:
             rospy.sleep(0.1)
@@ -257,8 +267,12 @@ def main():
         elif (CHECK_FOR_UPDATED_PARAMS and updates % 50 == 0): update_rosparams()
         
         updates += 1
+        if updates % 100 == 0:
+            rospy.loginfo(f"Tracker running at {100/(time.time() - start_time):1.1f} Hz")
+            start_time = time.time()
 
         # Read first frame.
+        global frame
         ok, frame = video.read()
         if not ok:
             print('Couldnt read frame')
@@ -272,15 +286,65 @@ def main():
 
         image = frame.copy()
         height,width,depth = image.shape
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        blur = cv2.medianBlur(gray, 5)
+
+
+        hue_range = (rospy.get_param("/param_server/hue_min"), rospy.get_param("/param_server/hue_max"))
+        sat_range = (rospy.get_param("/param_server/sat_min"), rospy.get_param("/param_server/sat_max"))
+        val_range = (rospy.get_param("/param_server/val_min"), rospy.get_param("/param_server/val_max"))
+
+        bl, bu = (tp.BLUE_HSV[0] - hue_range[0], tp.BLUE_HSV[1] - sat_range[0], tp.BLUE_HSV[2] - val_range[0]), (tp.BLUE_HSV[0] + hue_range[1], tp.BLUE_HSV[1] + sat_range[1], tp.BLUE_HSV[2] + val_range[1])
+        gl, gu = (tp.GREEN_HSV[0] - hue_range[0], tp.GREEN_HSV[1] - sat_range[0], tp.GREEN_HSV[2] - val_range[0]), (tp.GREEN_HSV[0] + hue_range[1], tp.GREEN_HSV[1] + sat_range[1], tp.GREEN_HSV[2] + val_range[1])
+        rl, ru = (tp.RED_HSV[0] - hue_range[0], tp.RED_HSV[1] - sat_range[0], tp.RED_HSV[2] - val_range[0]), (tp.RED_HSV[0] + hue_range[1], tp.RED_HSV[1] + sat_range[1], tp.RED_HSV[2] + val_range[1])
+
+        # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # blue = cv2.inRange(frame_hsv, np.array([bl,0,LOWER_THRESHOLD]), np.array([bu,255,UPPER_THRESHOLD]))
+        # red = cv2.inRange(frame_hsv, np.array([rl,0,LOWER_THRESHOLD]), np.array([ru,255,UPPER_THRESHOLD]))
+        # green = cv2.inRange(frame_hsv, np.array([gl,0,LOWER_THRESHOLD]), np.array([gu,255,UPPER_THRESHOLD]))
+
+        green = cv2.inRange(frame_hsv, gl, gu)
+        red = cv2.inRange(frame_hsv, rl, ru)
+        blue = cv2.inRange(frame_hsv, bl, bu)
+        # green = cv2.inRange(frame_hsv, np.array([min([bl, gl, rl]), 0, LOWER_THRESHOLD]), np.array([max([bu, gu, ru]), 255, UPPER_THRESHOLD]))
+
+        all_colors = cv2.bitwise_or(cv2.bitwise_or(red, green), blue)
+
+        # for f, color_string in zip([green, red, blue], ["green", "red", "blue"]):
+        #     # blur = cv2.medianBlur(green, BLUR_KERNEL_SIZE)
+        #     blur = cv2.GaussianBlur(f, (BLUR_KERNEL_SIZE, BLUR_KERNEL_SIZE), cv2.BORDER_DEFAULT)
+        #     sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+        #     sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
+        #     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
+        #     close = cv2.morphologyEx(sharpen, cv2.MORPH_CLOSE, kernel, iterations=2)
+            # cv2.imshow('blue', blue)
+            # cv2.imshow('red', red)
+            # cv2.imshow(color_string, f)
+            # cv2.imshow(f'blur_{color_string}', blur)
+            # cv2.imshow(f'sharpen_{color_string}', sharpen)
+            # cv2.imshow(f'close_{color_string}', close)
+
+        blur = cv2.GaussianBlur(all_colors, (BLUR_KERNEL_SIZE, BLUR_KERNEL_SIZE), cv2.BORDER_DEFAULT)
         sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
         sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
+        close = cv2.morphologyEx(sharpen, cv2.MORPH_CLOSE, kernel, iterations=2)
+        cv2.imshow("all_colors", all_colors)
+        # cv2.imshow(f'blur', blur)
+        # cv2.imshow(f'sharpen', sharpen)
+        # cv2.imshow(f'close', close)
 
-        thresh = cv2.threshold(sharpen,200,255, cv2.THRESH_BINARY_INV)[1]
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
-        close = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+        '''
+        thresh = gray = cv2.inRange(frame_hsv, np.array([50,0,LOWER_THRESHOLD]), np.array([200,255,UPPER_THRESHOLD]))
+        blur = cv2.medianBlur(gray, BLUR_KERNEL_SIZE)
+        if NINE_SHARPEN_KERNEL:
+            sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+        else:
+            sharpen_kernel = np.array([[0,-1,0], [-1,5,-1], [0,-1,0]])
+        sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
 
+        # thresh = cv2.threshold(sharpen, LOWER_THRESHOLD, UPPER_THRESHOLD, cv2.THRESH_BINARY_INV)[1]
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
+        close = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=3)
+        '''
         cnts = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         cnts = cnts[0] if len(cnts) == 2 else cnts[1]
         circle_masks = [] # circles around and including polygon
@@ -313,18 +377,14 @@ def main():
                     else:
                         x1,y1 = c[i+1][0]
                     cv2.line(image, (x0,y0), (x1,y1), (255,0,0), 2)
-            #     # ROI = image[y:y+h, x:x+w]
-            #     # cv2.imwrite('ROI_{}.png'.format(image_number), ROI)
-            #     cv2.rectangle(image, (x, y), (x + w, y + h), (36,255,12), 2)
-            #     image_number += 1
-            elif area > MIN_CONTOUR_AREA:
-                # print(f"ignored contour area {area}. Too big")
+            elif area < MIN_CONTOUR_AREA or area > MAX_CONTOUR_AREA:
+                print(f"ignored contour area {area}.")
                 pass
 
         if SHOW_IMAGES:
             cv2.imshow('sharpen', sharpen)
             cv2.imshow('close', close)
-            cv2.imshow('thresh', thresh)
+            # cv2.imshow('thresh', thresh)
         
         # print(f"centers {centers} n_circles {len(circle_masks)} n_polys {len(poly_masks)}")
         idx0 = 0
@@ -351,17 +411,18 @@ def main():
                     cv2.imshow(f'failed_forward_mask_{idx0}', cv2.bitwise_and(frame, frame, mask=forward_mask))
 
             idx0 += 1
+
                     
 
         cv2.imshow('image', image)
-        cv2.imshow('frame_hsv', frame_hsv)
+        # cv2.imshow('frame_hsv', frame_hsv)
         if cv2.waitKey(1) & 0xFF == ord('q'): # if press SPACE bar
             rospy.signal_shutdown("Quit")
             break
 
         # if (SHOW_IMAGES):
             # cv2.setMouseCallback('image', mouse_cb)
-        cv2.setMouseCallback('frame_hsv', mouse_cb)
+        cv2.setMouseCallback('image', mouse_cb)
 
         if (ekf_pose2d):
             efk_frame = frame.copy()
@@ -375,8 +436,8 @@ def main():
                 cv2.circle(efk_frame, (int(pose2d.x), int(pose2d.y)), 25, (255,255,255), -1)
             cv2.imshow("tracked", efk_frame)
 
-        # Plot spheros NOTE: Out of place, should be its own node probably
-        plot_spheros([ekf_pose2d[key] for key in ekf_pose2d.keys()], [key for key in ekf_pose2d.keys()], ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])
+            # Plot spheros NOTE: Out of place, should be its own node probably
+            plot_spheros([ekf_pose2d[key] for key in ekf_pose2d.keys()], [key for key in ekf_pose2d.keys()], ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])
 
 
         # >>>> convert image coordinates to scene coordinates

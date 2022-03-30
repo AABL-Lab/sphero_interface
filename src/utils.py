@@ -53,7 +53,8 @@ def list_vide_ports():
     return available_ports,working_ports
 
 # def init_videocapture(channel=0,width=1280, height=720):
-def init_videocapture(channel=0,width=1280, height=720, scale=2):
+def init_videocapture(channel=0,width=2048, height=1080, scale=2):
+# def init_videocapture(channel=0,width=4096, height=2160, scale=2):
     camera = cv2.VideoCapture(channel, cv2.CAP_V4L2)
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, width//2)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height//2)

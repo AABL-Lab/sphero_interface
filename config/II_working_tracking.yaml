@@ -1,67 +1,79 @@
 !!python/object/new:dynamic_reconfigure.encoding.Config
 dictitems:
-  blue_h: 117
+  blue_h: 100
   blue_s: 247
   blue_v: 125
-  expected_sphero_radius: 18
+  blur_kernel_size: 3
+  expected_sphero_radius: 25
   fwd_hue_max: 255
   fwd_hue_min: 0
   fwd_sat_max: 255
   fwd_sat_min: 0
   fwd_val_max: 255
   fwd_val_min: 220
-  green_h: 124
+  green_h: 89
   green_s: 212
   green_v: 125
   groups: !!python/object/new:dynamic_reconfigure.encoding.Config
     dictitems:
-      blue_h: 117
+      blue_h: 100
       blue_s: 247
       blue_v: 125
-      expected_sphero_radius: 18
+      blur_kernel_size: 3
+      expected_sphero_radius: 25
       fwd_hue_max: 255
       fwd_hue_min: 0
       fwd_sat_max: 255
       fwd_sat_min: 0
       fwd_val_max: 255
       fwd_val_min: 220
-      green_h: 124
+      green_h: 89
       green_s: 212
       green_v: 125
       groups: !!python/object/new:dynamic_reconfigure.encoding.Config
         state: []
-      hue_max: 10
-      hue_min: 10
+      hue_max: 5
+      hue_min: 5
       id: 0
+      lower_threshold: 233
       max_contour_area: 750
       min_contour_area: 100
+      morph_rect_size: 3
       name: Default
+      nine_sharpen_kernel: true
       orientation_covariance: 0.1
       parameters: !!python/object/new:dynamic_reconfigure.encoding.Config
         state: []
       parent: 0
       position_covariance: 3.0
-      red_h: 139
+      red_h: 175
       red_s: 212
       red_v: 118
-      sat_max: 10
-      sat_min: 10
+      sat_max: 255
+      sat_min: 255
+      show_pipeline: true
       state: true
       type: ''
+      upper_threshold: 255
       val_max: 255
       val_min: 255
     state: []
-  hue_max: 10
-  hue_min: 10
+  hue_max: 5
+  hue_min: 5
+  lower_threshold: 233
   max_contour_area: 750
   min_contour_area: 100
+  morph_rect_size: 3
+  nine_sharpen_kernel: true
   orientation_covariance: 0.1
   position_covariance: 3.0
-  red_h: 139
+  red_h: 175
   red_s: 212
   red_v: 118
-  sat_max: 10
-  sat_min: 10
+  sat_max: 255
+  sat_min: 255
+  show_pipeline: true
+  upper_threshold: 255
   val_max: 255
   val_min: 255
 state: []
