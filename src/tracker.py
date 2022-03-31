@@ -308,29 +308,61 @@ def main():
 
         all_colors = cv2.bitwise_or(cv2.bitwise_or(red, green), blue)
 
-        # for f, color_string in zip([green, red, blue], ["green", "red", "blue"]):
-        #     # blur = cv2.medianBlur(green, BLUR_KERNEL_SIZE)
-        #     blur = cv2.GaussianBlur(f, (BLUR_KERNEL_SIZE, BLUR_KERNEL_SIZE), cv2.BORDER_DEFAULT)
-        #     sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-        #     sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
-        #     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
-        #     close = cv2.morphologyEx(sharpen, cv2.MORPH_CLOSE, kernel, iterations=2)
+        for f, color_string in zip([green, red, blue], ["green", "red", "blue"]):
+            # blur = cv2.medianBlur(green, BLUR_KERNEL_SIZE)
+            blur = cv2.GaussianBlur(f, (BLUR_KERNEL_SIZE, BLUR_KERNEL_SIZE), cv2.BORDER_DEFAULT)
+            sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+            sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
+            close = cv2.morphologyEx(sharpen, cv2.MORPH_CLOSE, kernel, iterations=2)
+            
+            # cv2.imshow(color_string, f)
+
+            id = tp.color_to_id[color_string] # we know the id because we're searching specifically for the color
+
+            cnts = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+            if len(cnts) == 0: continue
+            c = cnts[0]
+            area = cv2.contourArea(c)
+            cv2.imshow(f'close_{color_string}', close)
+            if (area < MIN_CONTOUR_AREA or area > MAX_CONTOUR_AREA):
+                # print(f"Contour for {id} is too small or too large: {area}")
+                continue
+
+            x,y,w,h = cv2.boundingRect(c)
+            cx, cy = x+(w//2), y+(h//2)
+
+            mask0 = np.zeros((height,width), np.uint8)
+            cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.8), (255,255,255), -1)
+            mask1 = np.zeros((height,width), np.uint8)
+            cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
+            rim_mask = cv2.bitwise_and(cv2.bitwise_not(mask0), mask1)
+            rim_img = cv2.bitwise_and(image, image, mask=rim_mask)
+            rim_img = cv2.cvtColor(rim_img, cv2.COLOR_RGB2HSV)
+            cv2.imshow(f'rim_img_{color_string}', rim_img)
+
+            forward_mask, fwd_center, forward_blob = detectors_dict[id].processColor(rim_img, lower=(FWD_H_RANGE[0], FWD_S_RANGE[0], FWD_V_RANGE[0]), upper=(FWD_H_RANGE[1], FWD_S_RANGE[1], FWD_V_RANGE[1]), note="fwd")
+            if not fwd_center: continue
+            fx,fy = fwd_center
+
+            theta = atan2(-fy + cy, fx - cx)
+            while theta < 0: theta += 2*np.pi
+            while theta > 2*np.pi: theta -= 2*np.pi
+            detectors_dict[id].set_detected_position(cx, cy, theta)
+            cv2.line(image, (cx,cy), (fx,fy), (255,0,0), 2)
+
             # cv2.imshow('blue', blue)
             # cv2.imshow('red', red)
-            # cv2.imshow(color_string, f)
             # cv2.imshow(f'blur_{color_string}', blur)
             # cv2.imshow(f'sharpen_{color_string}', sharpen)
-            # cv2.imshow(f'close_{color_string}', close)
 
-        blur = cv2.GaussianBlur(all_colors, (BLUR_KERNEL_SIZE, BLUR_KERNEL_SIZE), cv2.BORDER_DEFAULT)
-        sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-        sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
-        close = cv2.morphologyEx(sharpen, cv2.MORPH_CLOSE, kernel, iterations=2)
-        cv2.imshow("all_colors", all_colors)
-        # cv2.imshow(f'blur', blur)
-        # cv2.imshow(f'sharpen', sharpen)
-        # cv2.imshow(f'close', close)
+        # blur = cv2.GaussianBlur(all_colors, (BLUR_KERNEL_SIZE, BLUR_KERNEL_SIZE), cv2.BORDER_DEFAULT)
+        # sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+        # sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
+        # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
+        # close = cv2.morphologyEx(sharpen, cv2.MORPH_CLOSE, kernel, iterations=2)
+        # cv2.imshow("all_colors", all_colors)
 
         '''
         thresh = gray = cv2.inRange(frame_hsv, np.array([50,0,LOWER_THRESHOLD]), np.array([200,255,UPPER_THRESHOLD]))
@@ -345,72 +377,71 @@ def main():
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
         close = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=3)
         '''
-        cnts = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-        circle_masks = [] # circles around and including polygon
-        poly_masks = [] # polygons themselves
-        centers = []
-        for c in cnts:
-            area = cv2.contourArea(c)
-            # print(f" {len(c)} points area {area}")
-            if area > MIN_CONTOUR_AREA and area < MAX_CONTOUR_AREA:
-                x,y,w,h = cv2.boundingRect(c)
-                cx, cy = x+(w//2), y+(h//2)
-                mask0 = np.zeros((height,width), np.uint8)
-                cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.8), (255,255,255), -1)
-                mask1 = np.zeros((height,width), np.uint8)
-                cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
-                circle_masks.append(cv2.bitwise_and(cv2.bitwise_not(mask0), mask1))
-                centers.append((cx,cy))
+        # cnts = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        # cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+        # circle_masks = [] # circles around and including polygon
+        # poly_masks = [] # polygons themselves
+        # centers = []
+        # for c in cnts:
+        #     area = cv2.contourArea(c)
+        #     # print(f" {len(c)} points area {area}")
+        #     if area > MIN_CONTOUR_AREA and area < MAX_CONTOUR_AREA:
+        #         x,y,w,h = cv2.boundingRect(c)
+        #         cx, cy = x+(w//2), y+(h//2)
+        #         mask0 = np.zeros((height,width), np.uint8)
+        #         cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.8), (255,255,255), -1)
+        #         mask1 = np.zeros((height,width), np.uint8)
+        #         cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
+        #         circle_masks.append(cv2.bitwise_and(cv2.bitwise_not(mask0), mask1))
+        #         centers.append((cx,cy))
 
-                mask0 = np.zeros((height,width), np.uint8)
-                cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.4), (255,255,255), -1)
-                # cv2.fillPoly(mask0, pts=[c], color=(255,255,255))
-                mask1 = np.zeros((height,width), np.uint8)
-                cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.0), (255,255,255), -1)
-                poly_masks.append(cv2.bitwise_and(cv2.bitwise_not(mask0), mask1))
+        #         mask0 = np.zeros((height,width), np.uint8)
+        #         cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.4), (255,255,255), -1)
+        #         # cv2.fillPoly(mask0, pts=[c], color=(255,255,255))
+        #         mask1 = np.zeros((height,width), np.uint8)
+        #         cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.0), (255,255,255), -1)
+        #         poly_masks.append(cv2.bitwise_and(cv2.bitwise_not(mask0), mask1))
                 
-                for i in range(len(c)):
-                    x0,y0 = c[i][0]
-                    if i == len(c) - 1:
-                        x1,y1 = c[0][0]
-                    else:
-                        x1,y1 = c[i+1][0]
-                    cv2.line(image, (x0,y0), (x1,y1), (255,0,0), 2)
-            elif area < MIN_CONTOUR_AREA or area > MAX_CONTOUR_AREA:
-                print(f"ignored contour area {area}.")
-                pass
+        #         for i in range(len(c)):
+        #             x0,y0 = c[i][0]
+        #             if i == len(c) - 1:
+        #                 x1,y1 = c[0][0]
+        #             else:
+        #                 x1,y1 = c[i+1][0]
+        #             cv2.line(image, (x0,y0), (x1,y1), (255,0,0), 2)
+        #     elif area < MIN_CONTOUR_AREA or area > MAX_CONTOUR_AREA:
+        #         # print(f"ignored contour area {area}.")
+        #         pass
 
-        if SHOW_IMAGES:
-            cv2.imshow('sharpen', sharpen)
-            cv2.imshow('close', close)
-            # cv2.imshow('thresh', thresh)
+        # if SHOW_IMAGES:
+        #     cv2.imshow('sharpen', sharpen)
+        #     cv2.imshow('close', close)
+        #     # cv2.imshow('thresh', thresh)
         
-        # print(f"centers {centers} n_circles {len(circle_masks)} n_polys {len(poly_masks)}")
-        idx0 = 0
-        for circle_mask, poly_mask, (cx, cy) in zip(circle_masks, poly_masks, centers):
-            rim_img = cv2.bitwise_and(frame, frame, mask=circle_mask)
-            rim_img = cv2.cvtColor(rim_img, cv2.COLOR_RGB2HSV)
-            color_id_mask = poly_mask
-            color_id_img = cv2.bitwise_and(frame, frame, mask=color_id_mask)
-            if (SHOW_IMAGES): cv2.imshow(f'color_id_{idx0}', color_id_img)
-            if (SHOW_IMAGES): cv2.imshow(f'rim_img_{idx0}', rim_img)
-            color_id_hsv = cv2.cvtColor(color_id_img, cv2.COLOR_RGB2HSV)
+        # idx0 = 0
+        # for circle_mask, poly_mask, (cx, cy) in zip(circle_masks, poly_masks, centers):
+        #     rim_img = cv2.bitwise_and(frame, frame, mask=circle_mask)
+        #     rim_img = cv2.cvtColor(rim_img, cv2.COLOR_RGB2HSV)
+        #     color_id_mask = poly_mask
+        #     color_id_img = cv2.bitwise_and(frame, frame, mask=color_id_mask)
+        #     if (SHOW_IMAGES): cv2.imshow(f'color_id_{idx0}', color_id_img)
+        #     if (SHOW_IMAGES): cv2.imshow(f'rim_img_{idx0}', rim_img)
+        #     color_id_hsv = cv2.cvtColor(color_id_img, cv2.COLOR_RGB2HSV)
 
-            id, mean_hue, mean_sat = get_id_from_hue(cv2.cvtColor(color_id_hsv, cv2.COLOR_RGB2HSV))
-            if VERBOSE: rospy.loginfo(f"{idx0} {id} hsv: ({mean_hue:1.1f} {mean_sat:1.1f} d/c)")
-            if id in detectors_dict.keys():
-                # now use a rim mask to grab the bright outer light and use that for theta
-                forward_mask, forward_center, forward_blob = detectors_dict[id].processColor(rim_img.copy(), lower=(FWD_H_RANGE[0], FWD_S_RANGE[0], FWD_V_RANGE[0]), upper=(FWD_H_RANGE[1], FWD_S_RANGE[1], FWD_V_RANGE[1]), note="fwd")
-                if (forward_center is not None):
-                    theta = atan2(-forward_center[1] + cy, forward_center[0] - cx)
-                    while theta < 0: theta += 2*np.pi
-                    while theta > 2*np.pi: theta -= 2*np.pi
-                    detectors_dict[id].set_detected_position(cx, cy, theta)
-                elif SHOW_IMAGES:
-                    cv2.imshow(f'failed_forward_mask_{idx0}', cv2.bitwise_and(frame, frame, mask=forward_mask))
+        #     id, mean_hue, mean_sat = get_id_from_hue(cv2.cvtColor(color_id_hsv, cv2.COLOR_RGB2HSV))
+        #     if VERBOSE: rospy.loginfo(f"{idx0} {id} hsv: ({mean_hue:1.1f} {mean_sat:1.1f} d/c)")
+        #     if id in detectors_dict.keys():
+        #         # now use a rim mask to grab the bright outer light and use that for theta
+        #         forward_mask, forward_center, forward_blob = detectors_dict[id].processColor(rim_img.copy(), lower=(FWD_H_RANGE[0], FWD_S_RANGE[0], FWD_V_RANGE[0]), upper=(FWD_H_RANGE[1], FWD_S_RANGE[1], FWD_V_RANGE[1]), note="fwd")
+        #         if (forward_center is not None):
+        #             theta = atan2(-forward_center[1] + cy, forward_center[0] - cx)
+        #             while theta < 0: theta += 2*np.pi
+        #             while theta > 2*np.pi: theta -= 2*np.pi
+        #             detectors_dict[id].set_detected_position(cx, cy, theta)
+        #         # elif SHOW_IMAGES:
+        #         #     cv2.imshow(f'failed_forward_mask_{idx0}', cv2.bitwise_and(frame, frame, mask=forward_mask))
 
-            idx0 += 1
+        #     idx0 += 1
 
                     
 

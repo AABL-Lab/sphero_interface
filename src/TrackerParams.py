@@ -59,6 +59,8 @@ Sphero_RGB_Color_Strings = {
     "sd1": "green", # in lab
 }
 
+color_to_id = {Sphero_RGB_Color_Strings[key] : key for key in Sphero_RGB_Color_Strings.keys()}
+
 Sphero_HSV_Color = dict()
 def populate_hsv_dict():
     Sphero_HSV_Color.clear()

@@ -4,7 +4,7 @@ dictitems:
   blue_s: 247
   blue_v: 205
   blur_kernel_size: 3
-  expected_sphero_radius: 25
+  expected_sphero_radius: 17
   fwd_hue_max: 255
   fwd_hue_min: 0
   fwd_sat_max: 255
@@ -12,7 +12,7 @@ dictitems:
   fwd_val_max: 255
   fwd_val_min: 220
   green_h: 91
-  green_s: 155
+  green_s: 180
   green_v: 200
   groups: !!python/object/new:dynamic_reconfigure.encoding.Config
     dictitems:
@@ -20,7 +20,7 @@ dictitems:
       blue_s: 247
       blue_v: 205
       blur_kernel_size: 3
-      expected_sphero_radius: 25
+      expected_sphero_radius: 17
       fwd_hue_max: 255
       fwd_hue_min: 0
       fwd_sat_max: 255
@@ -28,7 +28,7 @@ dictitems:
       fwd_val_max: 255
       fwd_val_min: 220
       green_h: 91
-      green_s: 155
+      green_s: 180
       green_v: 200
       groups: !!python/object/new:dynamic_reconfigure.encoding.Config
         state: []
@@ -37,7 +37,7 @@ dictitems:
       id: 0
       lower_threshold: 233
       max_contour_area: 750
-      min_contour_area: 100
+      min_contour_area: 90
       morph_rect_size: 3
       name: Default
       nine_sharpen_kernel: true
@@ -57,12 +57,13 @@ dictitems:
       upper_threshold: 255
       val_max: 50
       val_min: 50
+      verbose: true
     state: []
   hue_max: 5
   hue_min: 5
   lower_threshold: 233
   max_contour_area: 750
-  min_contour_area: 100
+  min_contour_area: 90
   morph_rect_size: 3
   nine_sharpen_kernel: true
   orientation_covariance: 0.1
@@ -76,4 +77,5 @@ dictitems:
   upper_threshold: 255
   val_max: 50
   val_min: 50
+  verbose: true
 state: []
