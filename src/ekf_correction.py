@@ -28,7 +28,8 @@ def sphero_names_cb(msg: SpheroNames):
             pass
         else:
             corrected_ekf_pubs[name] = rospy.Publisher(name+"/pose", Pose2D, queue_size=1)
-            ekf_subs[name] = rospy.Subscriber(name+"_ekf/odom_combined", PoseWithCovarianceStamped, ekf_callback, callback_args=name)
+            # ekf_subs[name] = rospy.Subscriber(name+"_ekf/odom_combined", PoseWithCovarianceStamped, ekf_callback, callback_args=name)
+            ekf_subs[name] = rospy.Subscriber(name+"/pose_raw", Pose2D, raw_pose_cb, callback_args=name)
             initial_headings_subs[name] = rospy.Subscriber(name+"/initial_heading", HeadingStamped, initial_heading_cb, callback_args=name)
 
 def ekf_callback(msg: PoseWithCovarianceStamped, name: str):
@@ -42,6 +43,15 @@ def ekf_callback(msg: PoseWithCovarianceStamped, name: str):
     while (offset_heading < 0): offset_heading += 2*math.pi
 
     corrected_ekf_pubs[name].publish(Pose2D(msg.pose.pose.position.x, msg.pose.pose.position.y, offset_heading))
+
+def raw_pose_cb(msg: Pose2D, name: str):
+    if (name not in initial_headings):
+        return
+
+    offset_heading = initial_headings[name] + msg.theta
+    while (offset_heading > 2*math.pi): offset_heading -= 2*math.pi
+    while (offset_heading < 0): offset_heading += 2*math.pi
+    corrected_ekf_pubs[name].publish(Pose2D(msg.x, msg.y, offset_heading))
 
 def initial_heading_cb(msg: HeadingStamped, name: str): # callback for initial heading
     initial_headings[name] = msg.theta

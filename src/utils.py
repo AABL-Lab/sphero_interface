@@ -60,4 +60,5 @@ def init_videocapture(channel=0,width=2048, height=1080, scale=2):
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height//2)
     camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
     camera.set(cv2.CAP_PROP_FPS, 30)
+    # camera.set(28, 100)
     return camera

@@ -20,7 +20,7 @@ from tf.transformations import euler_from_quaternion
 
 import utils
 
-VERBOSE = True
+VERBOSE = False
 
 UPDATE_PERIOD = 0.2 # seconds for control loop
 SPEED = 30
@@ -42,6 +42,7 @@ class TrajectoryFollowerGroup():
 
         self.initial_headings = dict()
         self.sphero_poses = dict()
+        self.pose_ts = dict()
         self.goal_poses = dict()
 
         # self.goal_pub = rospy.Publisher(sphero_id+"/goal", Pose2D, queue_size=1)
@@ -59,7 +60,10 @@ class TrajectoryFollowerGroup():
                 self.goal_subscribers[name] = rospy.Subscriber(name+"/goal", PositionGoal, self.goal_callback, callback_args=name)
                 self.initial_heading_subscribers[name] = rospy.Subscriber(name+"/initial_heading", HeadingStamped, self.initial_heading_callback, callback_args=name)
 
-    def pose_callback(self, msg, name): self.sphero_poses[name] = msg
+    def pose_callback(self, msg, name):
+        self.sphero_poses[name] = msg
+        self.pose_ts[name] = time.time()
+
     def goal_callback(self, msg, name): self.goal_poses[name] = msg.goal # TODO: this should either have name as a callback arg or use the name in the messages, not both
     def initial_heading_callback(self, msg, name): self.initial_headings[name] = msg.theta
 
@@ -72,7 +76,11 @@ class TrajectoryFollowerGroup():
                 rospy.logwarn("Goal, but no initial heading for " + name)
                 continue
 
-            cmd = self.cmd_for(self.sphero_poses[name], goal, self.initial_headings[name])
+            if (time.time() - self.pose_ts[name]) > 0.5: # late pose send stop
+                rospy.logwarn("Stale pose data sending zero for " + name)
+                cmd = HeadingStamped()
+            else:
+                cmd = self.cmd_for(self.sphero_poses[name], goal, self.initial_headings[name])
             # cmd = self.cmd_for(self.sphero_poses[name], goal)
             self.cmd_publishers[name].publish(cmd)
 
