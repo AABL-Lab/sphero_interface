@@ -355,105 +355,7 @@ def main():
             theta = utils.cap_0_to_2pi(theta)
             detectors_dict[id].set_detected_position(cx, cy, theta)
 
-            # if (detectors_dict[id].initial_heading): # global pose corrected for initial pose
-            #     theta -= detectors_dict[id].initial_heading
-            #     while theta < 0: theta += 2*np.pi
-            #     while theta > 2*np.pi: theta -= 2*np.pi
-            # pose_cb(Pose2D(cx, cy, theta), id) # NOTE: Temporary hack to see if we can get away from using the ekf package (slows everything down)
             cv2.line(image, (cx,cy), (fx,fy), (255,0,0), 2)
-
-            # cv2.imshow('blue', blue)
-            # cv2.imshow('red', red)
-            # cv2.imshow(f'blur_{color_string}', blur)
-            # cv2.imshow(f'sharpen_{color_string}', sharpen)
-
-        # blur = cv2.GaussianBlur(all_colors, (BLUR_KERNEL_SIZE, BLUR_KERNEL_SIZE), cv2.BORDER_DEFAULT)
-        # sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-        # sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
-        # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
-        # close = cv2.morphologyEx(sharpen, cv2.MORPH_CLOSE, kernel, iterations=2)
-        # cv2.imshow("all_colors", all_colors)
-
-        '''
-        thresh = gray = cv2.inRange(frame_hsv, np.array([50,0,LOWER_THRESHOLD]), np.array([200,255,UPPER_THRESHOLD]))
-        blur = cv2.medianBlur(gray, BLUR_KERNEL_SIZE)
-        if NINE_SHARPEN_KERNEL:
-            sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-        else:
-            sharpen_kernel = np.array([[0,-1,0], [-1,5,-1], [0,-1,0]])
-        sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
-
-        # thresh = cv2.threshold(sharpen, LOWER_THRESHOLD, UPPER_THRESHOLD, cv2.THRESH_BINARY_INV)[1]
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
-        close = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=3)
-        '''
-        # cnts = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        # cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-        # circle_masks = [] # circles around and including polygon
-        # poly_masks = [] # polygons themselves
-        # centers = []
-        # for c in cnts:
-        #     area = cv2.contourArea(c)
-        #     # print(f" {len(c)} points area {area}")
-        #     if area > MIN_CONTOUR_AREA and area < MAX_CONTOUR_AREA:
-        #         x,y,w,h = cv2.boundingRect(c)
-        #         cx, cy = x+(w//2), y+(h//2)
-        #         mask0 = np.zeros((height,width), np.uint8)
-        #         cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.8), (255,255,255), -1)
-        #         mask1 = np.zeros((height,width), np.uint8)
-        #         cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
-        #         circle_masks.append(cv2.bitwise_and(cv2.bitwise_not(mask0), mask1))
-        #         centers.append((cx,cy))
-
-        #         mask0 = np.zeros((height,width), np.uint8)
-        #         cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.4), (255,255,255), -1)
-        #         # cv2.fillPoly(mask0, pts=[c], color=(255,255,255))
-        #         mask1 = np.zeros((height,width), np.uint8)
-        #         cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.0), (255,255,255), -1)
-        #         poly_masks.append(cv2.bitwise_and(cv2.bitwise_not(mask0), mask1))
-                
-        #         for i in range(len(c)):
-        #             x0,y0 = c[i][0]
-        #             if i == len(c) - 1:
-        #                 x1,y1 = c[0][0]
-        #             else:
-        #                 x1,y1 = c[i+1][0]
-        #             cv2.line(image, (x0,y0), (x1,y1), (255,0,0), 2)
-        #     elif area < MIN_CONTOUR_AREA or area > MAX_CONTOUR_AREA:
-        #         # print(f"ignored contour area {area}.")
-        #         pass
-
-        # if SHOW_IMAGES:
-        #     cv2.imshow('sharpen', sharpen)
-        #     cv2.imshow('close', close)
-        #     # cv2.imshow('thresh', thresh)
-        
-        # idx0 = 0
-        # for circle_mask, poly_mask, (cx, cy) in zip(circle_masks, poly_masks, centers):
-        #     rim_img = cv2.bitwise_and(frame, frame, mask=circle_mask)
-        #     rim_img = cv2.cvtColor(rim_img, cv2.COLOR_RGB2HSV)
-        #     color_id_mask = poly_mask
-        #     color_id_img = cv2.bitwise_and(frame, frame, mask=color_id_mask)
-        #     if (SHOW_IMAGES): cv2.imshow(f'color_id_{idx0}', color_id_img)
-        #     if (SHOW_IMAGES): cv2.imshow(f'rim_img_{idx0}', rim_img)
-        #     color_id_hsv = cv2.cvtColor(color_id_img, cv2.COLOR_RGB2HSV)
-
-        #     id, mean_hue, mean_sat = get_id_from_hue(cv2.cvtColor(color_id_hsv, cv2.COLOR_RGB2HSV))
-        #     if VERBOSE: rospy.loginfo(f"{idx0} {id} hsv: ({mean_hue:1.1f} {mean_sat:1.1f} d/c)")
-        #     if id in detectors_dict.keys():
-        #         # now use a rim mask to grab the bright outer light and use that for theta
-        #         forward_mask, forward_center, forward_blob = detectors_dict[id].processColor(rim_img.copy(), lower=(FWD_H_RANGE[0], FWD_S_RANGE[0], FWD_V_RANGE[0]), upper=(FWD_H_RANGE[1], FWD_S_RANGE[1], FWD_V_RANGE[1]), note="fwd")
-        #         if (forward_center is not None):
-        #             theta = atan2(-forward_center[1] + cy, forward_center[0] - cx)
-        #             while theta < 0: theta += 2*np.pi
-        #             while theta > 2*np.pi: theta -= 2*np.pi
-        #             detectors_dict[id].set_detected_position(cx, cy, theta)
-        #         # elif SHOW_IMAGES:
-        #         #     cv2.imshow(f'failed_forward_mask_{idx0}', cv2.bitwise_and(frame, frame, mask=forward_mask))
-
-        #     idx0 += 1
-
-                    
 
         cv2.imshow('image', image)
         # cv2.imshow('frame_hsv', frame_hsv)
@@ -480,8 +382,6 @@ def main():
             plot_spheros([ekf_pose2d[key] for key in ekf_pose2d.keys()], [key for key in ekf_pose2d.keys()], ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])
 
 
-        # >>>> convert image coordinates to scene coordinates
-        # TODO: Connect to each individual sphero's ekf node (if resources allow)
         for I in detectors_dict.values():
             pose_img = I.last_detected_color_pose
             if pose_img is not None:
@@ -500,42 +400,11 @@ def main():
                         rospy.loginfo(f"Not enough samples to set initial heading for {I.sphero_id}")
                         rospy.loginfo(f"{I.sphero_id} n {len(I.initial_heading_samples)} {np.std(I.initial_heading_samples):1.2f} theta {theta:1.2f}")
                 else:
-                    # offset_theta = theta - I.initial_heading
-                    # offset_theta = utils.cap_0_to_2pi(offset_theta)
                     if (rospy.get_time() - I.last_detected_color_ts < 0.2):
                         # I.raw_pose_pub.publish(Pose2D(x, y, offset_theta))
                         data = Pose2D(x, y, theta)
                         I.pose_pub.publish(data)
                         pose_cb(data, I.sphero_id)
-                    # odom_msg = Odometry()
-                    # odom_msg.header.stamp = rospy.Time.now()
-                    # odom_msg.header.frame_id = "odom"
-                    # p = PoseWithCovariance()
-                    # p.pose.position = Point(x,y,0)
-
-                    # # Calculate the offset theta considering the initial heading of the sphero. This must be done so the ekf sees consistent data between the orientation published in interface.py and this detection
-                    # offset_theta = theta - I.initial_heading
-                    # while offset_theta > np.pi: offset_theta -= np.pi*2
-                    # while offset_theta < -np.pi: offset_theta += np.pi*2
-                    # # rospy.loginfo(f"{I.sphero_id}: {theta:1.2f} - {I.initial_heading:1.2f} = {offset_theta:1.2f}")
-                    # # 
-
-                    # q = quaternion_from_euler(0., 0., offset_theta)
-                    # p.pose.orientation = Quaternion(*q)
-                    # p.covariance = np.array([ # ignore covairance between factors, but the way we're doing this we get a lot of jitter, so x and y definitely have some variance. In pixels.
-                    #     [POSITION_COVARIANCE, 0., 0., 0., 0., 0.], # pixels
-                    #     [0., POSITION_COVARIANCE, 0., 0., 0., 0.],  # pixels
-                    #     [0., 0., 1e-6, 0., 0., 0.],
-                    #     [0., 0., 0., 1e-6, 0., 0.],
-                    #     [0., 0., 0., 0., 1e-6, 0.],
-                    #     [0., 0., 0., 0., 0., ORIENTATION_COVARIANCE], # radians
-                    #     ]).flatten() # TODO
-                    # tw = TwistWithCovariance() # TODO
-                    # odom_msg.pose = p
-                    # odom_msg.twist = tw
-                    # I.odom_pub.publish(odom_msg)
-                    # I.last_detected_color_pose = None
-            # <<<< convert image coordinates to scene coordinates
 
         # Exit if ESC pressed
         if SHOW_IMAGES and cv2.waitKey(1) & 0xFF == ord('q'): # if press SPACE bar

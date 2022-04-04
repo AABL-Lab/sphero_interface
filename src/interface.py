@@ -117,13 +117,6 @@ class WrappedSphero(Sphero):
                 print(f"{self.name} Setting matrix to: {r},{g},{b}")
                 # self.user_io.set_led_matrix_one_color(Color(*WHITE_RGB))
                 self.user_io.set_led_matrix_one_color(Color(r, g, b))
-                # self.user_io.set_led_matrix_single_character("V", Color(r,g,b))
-                # for pixel in [Pixel(x,y) for x in range(8) for y in range(2)]: # top of T
-                    # self.user_io.set_led_matrix_pixel(pixel, Color(*WHITE_RGB))
-                    # self.user_io.set_led_matrix_pixel(pixel, Color(r,g,b))
-                # for pixel in [Pixel(x,y) for x in range(3,5) for y in range(2,8)]: # top of T
-                    # self.user_io.set_led_matrix_pixel(pixel, Color(*WHITE_RGB))
-                    # self.user_io.set_led_matrix_pixel(pixel, Color(r,g,b))
 
             rospy.loginfo(f"{self.name} connected.")
             self.is_connected = True
@@ -156,14 +149,7 @@ class WrappedSphero(Sphero):
         self.cmd.v = min(100, max(self.cmd.v, -100))
         self.cmd.theta = min(360, max(self.cmd.theta, 0)) # todo: correct for wrap
 
-        # unfortunately we can only do this in the main thread
-        # try:
-        #     with time_limit(1):
-        # if (self.cmd.v == 0): print(f"{self.name} stopping")
         self.driving.drive_with_heading(int(self.cmd.v), int(self.cmd.theta), Direction.forward)
-        # except TimeoutException as e:
-        #     rospy.loginfo(f"{self.name} timed out on step.")
-
 
     def color_cb(self, color_request):
         rospy.loginfo("Setting color to "+str(color_request))
