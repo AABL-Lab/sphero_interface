@@ -22,6 +22,11 @@ def cap_0_to_2pi(angle):
     while (angle < 0): angle += 2*math.pi
     return angle
 
+def cap_npi_to_pi(angle):
+    while (angle > math.pi): angle -= 2*math.pi
+    while (angle < -math.pi): angle += 2*math.pi
+    return angle
+
 def cap_0_to_360(angle):
     while (angle > 360): angle -= 360
     while (angle < 0): angle += 360

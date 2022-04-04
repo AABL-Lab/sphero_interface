@@ -96,12 +96,13 @@ class VisionDetect:
         self.theta_smoother = [] # low pass filter for theta
 
         # self.odom_pub = rospy.Publisher(f"/{self.sphero_id}/odom", Odometry, queue_size=10)
-        self.raw_pose_pub = rospy.Publisher(f"/{self.sphero_id}/pose_raw", Pose2D, queue_size=10)
+        # self.raw_pose_pub = rospy.Publisher(f"/{self.spheroq_id}/pose_raw", Pose2D, queue_size=10)
+        self.pose_pub = rospy.Publisher(f"/{self.sphero_id}/pose", Pose2D, queue_size=1)
         self.initial_heading_pub = rospy.Publisher(f"/{self.sphero_id}/initial_heading", HeadingStamped, queue_size=1, latch=True)
 
         self.goal = None
         self.goal_sub = rospy.Subscriber(f"/{self.sphero_id}/goal", PositionGoal, goal_cb) # this should be in rviz probably
-        self.pose_sub = rospy.Subscriber(f"/{self.sphero_id}/pose", Pose2D, pose_cb, callback_args=self.sphero_id)
+        # self.pose_sub = rospy.Subscriber(f"/{self.sphero_id}/pose", Pose2D, pose_cb, callback_args=self.sphero_id)
 
         self.initial_heading_samples = []
         self.initial_heading = None
@@ -320,16 +321,19 @@ def main():
             # cv2.imshow(color_string, f)
 
             id = tp.color_to_id[color_string] # we know the id because we're searching specifically for the color
+            if id not in detectors_dict.keys(): continue
 
             cnts = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
             cnts = cnts[0] if len(cnts) == 2 else cnts[1]
             if len(cnts) == 0: continue
             c = cnts[0]
             area = cv2.contourArea(c)
-            cv2.imshow(f'close_{color_string}', close)
             if (area < MIN_CONTOUR_AREA or area > MAX_CONTOUR_AREA):
+                cv2.imshow(f'rejected_close_{color_string}', close)
                 # print(f"Contour for {id} is too small or too large: {area}")
                 continue
+            else:
+                cv2.imshow(f'close_{color_string}', close)
 
             x,y,w,h = cv2.boundingRect(c)
             cx, cy = x+(w//2), y+(h//2)
@@ -348,8 +352,7 @@ def main():
             fx,fy = fwd_center
 
             theta = atan2(-fy + cy, fx - cx)
-            while theta < 0: theta += 2*np.pi
-            while theta > 2*np.pi: theta -= 2*np.pi
+            theta = utils.cap_0_to_2pi(theta)
             detectors_dict[id].set_detected_position(cx, cy, theta)
 
             # if (detectors_dict[id].initial_heading): # global pose corrected for initial pose
@@ -467,8 +470,7 @@ def main():
             for sphero_id, (x,y,theta) in ekf_pose2d.items():
                 if (x > 0 and y > 0):
                     cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
-                    draw_theta = theta
-                    cv2.line(efk_frame, (int(x), int(y)), (int(x+15*np.cos(draw_theta)), int(y-15*np.sin(draw_theta))), (0,0,255), 2)
+                    cv2.line(efk_frame, (int(x), int(y)), (int(x+15*np.cos(theta)), int(y-15*np.sin(theta))), (0,0,255), 2)
             
             for sphero_id, pose2d in goal_pose2d.items():
                 cv2.circle(efk_frame, (int(pose2d.x), int(pose2d.y)), 25, tp.Sphero_RGB_Color[sphero_id], -1)
@@ -498,11 +500,13 @@ def main():
                         rospy.loginfo(f"Not enough samples to set initial heading for {I.sphero_id}")
                         rospy.loginfo(f"{I.sphero_id} n {len(I.initial_heading_samples)} {np.std(I.initial_heading_samples):1.2f} theta {theta:1.2f}")
                 else:
-                    offset_theta = theta - I.initial_heading
-                    while offset_theta > np.pi: offset_theta -= np.pi*2
-                    while offset_theta < -np.pi: offset_theta += np.pi*2
+                    # offset_theta = theta - I.initial_heading
+                    # offset_theta = utils.cap_0_to_2pi(offset_theta)
                     if (rospy.get_time() - I.last_detected_color_ts < 0.2):
-                        I.raw_pose_pub.publish(Pose2D(x, y, offset_theta))
+                        # I.raw_pose_pub.publish(Pose2D(x, y, offset_theta))
+                        data = Pose2D(x, y, theta)
+                        I.pose_pub.publish(data)
+                        pose_cb(data, I.sphero_id)
                     # odom_msg = Odometry()
                     # odom_msg.header.stamp = rospy.Time.now()
                     # odom_msg.header.frame_id = "odom"

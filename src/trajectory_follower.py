@@ -4,14 +4,15 @@ Node to control an arbitrary number of spheros to their goals
 @author james.staley625703@tufts.edu
 '''
 
+import string
 import traceback
 from copy import deepcopy
 import time, math, random
 
-from numpy import rad2deg
+from numpy import rad2deg, exp
 from IPython import embed
 
-import rospy
+import rospy, rosparam
 from rospy import Subscriber
 from std_msgs.msg import Float32
 from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped
@@ -22,9 +23,11 @@ import utils
 
 VERBOSE = False
 
-UPDATE_PERIOD = 0.2 # seconds for control loop
-SPEED = 30
-GOAL_THRESHOLD = 75 # How far we can be from a goal before its considered achieved
+UPDATE_PERIOD = 0.1 # seconds for control loop
+MIN_SPEED = 10
+MAX_SPEED = 30
+GOAL_THRESHOLD = 2 * rospy.get_param("/param_server/expected_sphero_radius", default=30) # How far we can be from a goal before its considered achieved
+SLOWDOWN_DISTANCE = 5 * GOAL_THRESHOLD
 TEST_SQUARE_LEN = 200
 LOOP_TRAJECTORY = False
 
@@ -80,15 +83,26 @@ class TrajectoryFollowerGroup():
                 rospy.logwarn("Stale pose data sending zero for " + name)
                 cmd = HeadingStamped()
             else:
-                cmd = self.cmd_for(self.sphero_poses[name], goal, self.initial_headings[name])
+                cmd = self.cmd_for(name, goal)
             # cmd = self.cmd_for(self.sphero_poses[name], goal)
             self.cmd_publishers[name].publish(cmd)
 
-    def cmd_for(self, curr_pose: Pose2D, goal_pose: Pose2D, initial_heading=0):
+    def distance_to_speed(self, distance_from_goal):
+        '''
+        Given a distance from the goal, returns the speed to use.
+        '''
+        if distance_from_goal > SLOWDOWN_DISTANCE:
+            return MAX_SPEED
+        else:
+            return max(MIN_SPEED, MAX_SPEED * exp(- (SLOWDOWN_DISTANCE - distance_from_goal) / 50))
+
+    def cmd_for(self, name: string, goal_pose: Pose2D):
         cmd = HeadingStamped()
+        curr_pose = self.sphero_poses[name]
+        initial_heading = self.initial_headings[name]
         distance_to_goal = utils.pose2d_distance(curr_pose, goal_pose)
         if (distance_to_goal < GOAL_THRESHOLD):
-            pass
+            if VERBOSE: rospy.loginfo(f"{name} at goal. distance: {distance_to_goal}")
         else:
             # Ys need to be flipped because of image coordinate system
             theta_goal = (math.atan2((-1*goal_pose.y) + curr_pose.y, goal_pose.x - curr_pose.x)) # NOTE: afaik we can't reset the sphero's heading through bluetooth
@@ -96,17 +110,17 @@ class TrajectoryFollowerGroup():
 
             # if VERBOSE: rospy.loginfo(f"target {theta_goal:1.1f} current {curr_pose.theta:1.1f}. distance_to_goal {distance_to_goal:1.2f}")
 
-            diff_theta_world = abs(theta_goal - curr_pose.theta) # dtheta in the world frame
+            diff_theta_world = utils.cap_npi_to_pi(abs(theta_goal - curr_pose.theta)) # dtheta in the world frame
             # diff_theta_local = diff_theta - initial_heading # dtheta in the sphero's frame
             # if VERBOSE: rospy.loginfo(f"dtheta_world {diff_theta:1.1f} from goal. dtheta_local {diff_theta_local:1.1f} from goal. th0 {initial_heading:1.1f}")
 
             adjusted_theta_goal = theta_goal - initial_heading
             if VERBOSE: rospy.loginfo(f"target {theta_goal:1.1f} adjusted {adjusted_theta_goal:1.1f}. th0 {initial_heading:1.1f} distance_to_goal {distance_to_goal:1.2f}")
 
-            cmd.v = SPEED if abs(diff_theta_world) < (math.pi / 4.) else 0 # Only move forward if we're mostly aligned with the goal
+            cmd.v = self.distance_to_speed(distance_to_goal) if abs(diff_theta_world) < (math.pi / 4.) else 0 # Only move forward if we're mostly aligned with the goal
             cmd.theta = rad2deg(utils.cap_0_to_2pi(2*math.pi - adjusted_theta_goal)) # NOTE: The sphero treats clockwise as positive theta and counterclockwise as negative theta, so we're flipping it here so we can use a standard approach
+            if VERBOSE: rospy.loginfo(f"current x:{curr_pose.x:1.1f} y:{curr_pose.y:1.1f} theta:{curr_pose.theta:1.1f} goal {goal_pose.x:1.1f} {goal_pose.y:1.1f} {goal_pose.theta:1.1f} cmd {cmd.v:1.1f} {cmd.theta:1.1f} diff_theta_world {diff_theta_world:1.1f}")
         
-        if VERBOSE: rospy.loginfo(f"current x:{curr_pose.x:1.1f} y:{curr_pose.y:1.1f} theta:{curr_pose.theta:1.1f} goal {goal_pose.x:1.1f} {goal_pose.y:1.1f} {goal_pose.theta:1.1f} cmd {cmd.v:1.1f} {cmd.theta:1.1f}")
         return cmd
 
 '''

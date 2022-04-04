@@ -51,7 +51,6 @@ spheros = {
     "EC:73:F2:19:0E:CA": None,
     "CA:64:39:FC:74:FB": None,
     "D1:FC:A0:92:D5:19": None,
-    #
     # "D9:81:9E:B8:AD:DB": None,
     # "F8:48:B1:E1:1E:2D": None,
     # "E9:84:4B:AD:58:EF": None,
@@ -133,8 +132,9 @@ class WrappedSphero(Sphero):
             if (e is TimeoutException):
                 rospy.loginfo(f"{self.name} timed out during setup.")
             else:
-                traceback.print_exc()
+                # traceback.print_exc()
                 rospy.loginfo(f"{self.name} failed to connect.")
+            raise e
         
     
     def init_sensor_read(self):
@@ -159,6 +159,7 @@ class WrappedSphero(Sphero):
         # unfortunately we can only do this in the main thread
         # try:
         #     with time_limit(1):
+        # if (self.cmd.v == 0): print(f"{self.name} stopping")
         self.driving.drive_with_heading(int(self.cmd.v), int(self.cmd.theta), Direction.forward)
         # except TimeoutException as e:
         #     rospy.loginfo(f"{self.name} timed out on step.")

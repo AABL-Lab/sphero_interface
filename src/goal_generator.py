@@ -14,8 +14,9 @@ from geometry_msgs.msg import Pose2D
 from sphero_interface.msg import SpheroNames, PositionGoal
 from geometry_msgs.msg import Pose2D
 
-w_range = (rospy.get_param("/tracker_params/min_width", 50.), rospy.get_param("/tracker_params/max_width", 550))
-h_range = (rospy.get_param("/tracker_params/min_height", 50.), rospy.get_param("/tracker_params/max_height", 350))
+w_range = (rospy.get_param("/tracker_params/min_width", 200.), rospy.get_param("/tracker_params/max_width", 650.))
+h_range = (rospy.get_param("/tracker_params/min_height", 200.), rospy.get_param("/tracker_params/max_height", 450))
+GOAL_THRESHOLD = 2 * rospy.get_param("/param_server/expected_sphero_radius", default=30) # How far we can be from a goal before its considered achieved
 
 active_goals = dict()
 current_poses = dict()
@@ -32,7 +33,7 @@ def main():
                 goal_publishers[k].publish(new_goal)
                 active_goals[k] = new_goal
             else:
-                if utils.pose2d_distance(current_poses[k], v.goal) < 0.1:
+                if utils.pose2d_distance(current_poses[k], v.goal) < GOAL_THRESHOLD:
                     rospy.loginfo(f"{k} reached goal {v.goal}")
                     active_goals[k] = None
 
