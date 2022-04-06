@@ -171,11 +171,9 @@ class VisionDetect:
         return mask, center, biggest_blob
 
     def set_detected_position(self, x_img, y_img, theta):
-        self.theta_smoother.append(theta)
-        if len(self.theta_smoother) > 10: self.theta_smoother.pop(0)
-        theta = sum(self.theta_smoother)/len(self.theta_smoother)
-        # if VERBOSE:
-        #     rospy.loginfo(f"{self.sphero_id}: Detected position: {x_img}, {y_img}, {theta}")
+        # self.theta_smoother.append(theta)
+        # if len(self.theta_smoother) > 10: self.theta_smoother.pop(0)
+        # theta = sum(self.theta_smoother)/len(self.theta_smoother)
 
         self.last_detected_color_pose = (x_img, y_img, theta)
         self.last_detected_color_ts = rospy.get_time()
@@ -289,7 +287,6 @@ def main():
         image = frame.copy()
         height,width,depth = image.shape
 
-
         hue_range = (rospy.get_param("/param_server/hue_min"), rospy.get_param("/param_server/hue_max"))
         sat_range = (rospy.get_param("/param_server/sat_min"), rospy.get_param("/param_server/sat_max"))
         val_range = (rospy.get_param("/param_server/val_min"), rospy.get_param("/param_server/val_max"))
@@ -311,16 +308,13 @@ def main():
         all_colors = cv2.bitwise_or(cv2.bitwise_or(red, green), blue)
 
         for f, color_string in zip([green, red, blue], ["green", "red", "blue"]):
-            # blur = cv2.medianBlur(green, BLUR_KERNEL_SIZE)
             blur = cv2.GaussianBlur(f, (BLUR_KERNEL_SIZE, BLUR_KERNEL_SIZE), cv2.BORDER_DEFAULT)
             sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
             sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
             close = cv2.morphologyEx(sharpen, cv2.MORPH_CLOSE, kernel, iterations=2)
             
-            # cv2.imshow(color_string, f)
-
-            id = tp.color_to_id[color_string] # we know the id because we're searching specifically for the color
+            id = tp.colorstring_to_id[color_string] # we know the id because we're searching specifically for the color
             if id not in detectors_dict.keys(): continue
 
             cnts = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -359,28 +353,10 @@ def main():
 
         cv2.imshow('image', image)
         # cv2.imshow('frame_hsv', frame_hsv)
-        if cv2.waitKey(1) & 0xFF == ord('q'): # if press SPACE bar
-            rospy.signal_shutdown("Quit")
-            break
 
         # if (SHOW_IMAGES):
             # cv2.setMouseCallback('image', mouse_cb)
         cv2.setMouseCallback('image', mouse_cb)
-
-        if (ekf_pose2d):
-            efk_frame = frame.copy()
-            for sphero_id, (x,y,theta) in ekf_pose2d.items():
-                if (x > 0 and y > 0):
-                    cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
-                    cv2.line(efk_frame, (int(x), int(y)), (int(x+15*np.cos(theta)), int(y-15*np.sin(theta))), (0,0,255), 2)
-            
-            for sphero_id, pose2d in goal_pose2d.items():
-                cv2.circle(efk_frame, (int(pose2d.x), int(pose2d.y)), 25, tp.Sphero_RGB_Color[sphero_id], -1)
-            cv2.imshow("tracked", efk_frame)
-
-            # Plot spheros NOTE: Out of place, should be its own node probably
-            plot_spheros([ekf_pose2d[key] for key in ekf_pose2d.keys()], [key for key in ekf_pose2d.keys()], ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])
-
 
         for I in detectors_dict.values():
             pose_img = I.last_detected_color_pose
@@ -406,12 +382,30 @@ def main():
                         I.pose_pub.publish(data)
                         pose_cb(data, I.sphero_id)
 
+
+
+        if (ekf_pose2d):
+            efk_frame = frame.copy()
+            for sphero_id, (x,y,theta) in ekf_pose2d.items():
+                if (x > 0 and y > 0):
+                    # cv2.circle(efk_frame, (int(x), int(y)), 5, (0,255,0), -1)
+                    cv2.line(efk_frame, (int(x), int(y)), (int(x+15*np.cos(theta)), int(y-15*np.sin(theta))), (0,0,255), 2)
+            
+            for sphero_id, pose2d in goal_pose2d.items():
+                cv2.circle(efk_frame, (int(pose2d.x), int(pose2d.y)), 25, tp.Sphero_RGB_Color[sphero_id], -1)
+            cv2.imshow("tracked", efk_frame)
+
+            # Plot spheros NOTE: Out of place, should be its own node probably
+            plot_spheros([ekf_pose2d[key] for key in ekf_pose2d.keys()], [key for key in ekf_pose2d.keys()], ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])
+
+
+
         # Exit if ESC pressed
-        if SHOW_IMAGES and cv2.waitKey(1) & 0xFF == ord('q'): # if press SPACE bar
+        if cv2.waitKey(1) & 0xFF == ord('q'): # if press SPACE bar
             rospy.signal_shutdown("Quit")
             break
 
-        rospy.sleep(0.01) # sleep for messages and interrupts
+        # rospy.sleep(0.01) # sleep for messages and interrupts
     
     video.release()
     cv2.waitKey(0)

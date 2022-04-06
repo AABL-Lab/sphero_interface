@@ -49,7 +49,7 @@ print(f"IN_LAB: {IN_LAB}")
 
 spheros = {
     "EC:73:F2:19:0E:CA": None,
-    "CA:64:39:FC:74:FB": None,
+    # "CA:64:39:FC:74:FB": None,
     "D1:FC:A0:92:D5:19": None,
     # "D9:81:9E:B8:AD:DB": None,
     # "F8:48:B1:E1:1E:2D": None,
@@ -72,7 +72,7 @@ spheros = {
 MAX_CONNECTION_TRIES = 3
 ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
 
-SENSOR_READ = True
+SENSOR_READ = False
 STABILIZE_SPHEROS = False
 
 from TrackerParams import GREEN_RGB, WHITE_RGB, Sphero_RGB_Color

@@ -4,6 +4,7 @@ TODO: This should go into a rosparam server
 '''
 from typing import NamedTuple
 from matplotlib.colors import rgb_to_hsv
+from optax import lamb
 import rospy
 
 class TrackerParams(NamedTuple):
@@ -51,15 +52,17 @@ Sphero_RGB_Color = {
     "sc9": RED_RGB,
 }
 
-Sphero_RGB_Color_Strings = {
-    "sd9": "red", # jss home
-    "sf8": "blue", # jss home
-    "sec": "red", # in lab
-    "sca": "blue", # in lab
-    "sd1": "green", # in lab
-}
+def string_for_color(color):
+    if (color == RED_RGB): return "red"
+    elif (color == BLUE_RGB): return "blue"
+    elif (color == YELLOW_RGB): return "yellow"
+    elif (color == MAGENTA_RGB): return "magenta"
+    elif (color == GREEN_RGB): return "green"
+    else: return "unknown"
+    
+id_to_colorstring = {k: string_for_color(v) for k, v in Sphero_RGB_Color.items()}
 
-color_to_id = {Sphero_RGB_Color_Strings[key] : key for key in Sphero_RGB_Color_Strings.keys()}
+colorstring_to_id = {id_to_colorstring[k]:k for k in ["sd9", "sf8", "sec", "sca", "sd1"]}
 
 Sphero_HSV_Color = dict()
 def populate_hsv_dict():
