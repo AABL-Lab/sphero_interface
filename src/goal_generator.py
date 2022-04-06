@@ -18,6 +18,10 @@ w_range = (rospy.get_param("/tracker_params/min_width", 200.), rospy.get_param("
 h_range = (rospy.get_param("/tracker_params/min_height", 200.), rospy.get_param("/tracker_params/max_height", 450))
 GOAL_THRESHOLD = 2 * rospy.get_param("/param_server/expected_sphero_radius", default=30) # How far we can be from a goal before its considered achieved
 
+
+PRESET_GOALS = {"sd1": [(200, 200), (400, 200)]}
+PRESET_GOALS_IDX = {"sd1": 0}
+
 active_goals = dict()
 current_poses = dict()
 goal_publishers = dict()
@@ -29,7 +33,13 @@ def main():
     while not rospy.is_shutdown(): # do work
         for k,v in active_goals.items():
             if v is None:
-                new_goal = PositionGoal(k, Pose2D(random.randint(*w_range), random.randint(*h_range), 0))
+                if (k in PRESET_GOALS):
+                    p_goals, p_idx = PRESET_GOALS[k], PRESET_GOALS_IDX[k]
+                    p_idx = p_idx % len(p_goals)
+                    PRESET_GOALS_IDX[k] += 1
+                    new_goal = PositionGoal(k, Pose2D(p_goals[p_idx][0], p_goals[p_idx][1], 0))
+                else:
+                    new_goal = PositionGoal(k, Pose2D(random.randint(*w_range), random.randint(*h_range), 0))
                 goal_publishers[k].publish(new_goal)
                 active_goals[k] = new_goal
             else:
