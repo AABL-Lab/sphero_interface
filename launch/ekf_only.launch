@@ -77,7 +77,6 @@
         </node>
     </group>
 
-
-    <node pkg="sphero_interface" type="ekf_correction.py" name="ekf_correction"></node>
+    <!-- <node pkg="sphero_interface" type="ekf_correction.py" name="ekf_correction"></node> -->
 
 </launch>

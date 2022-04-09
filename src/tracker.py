@@ -95,13 +95,14 @@ class VisionDetect:
         self.last_detected_color_pose = None
         self.theta_smoother = [] # low pass filter for theta
 
-        # self.odom_pub = rospy.Publisher(f"/{self.sphero_id}/odom", Odometry, queue_size=10)
+        self.odom_pub = rospy.Publisher(f"/{self.sphero_id}/odom", Odometry, queue_size=10)
         # self.raw_pose_pub = rospy.Publisher(f"/{self.spheroq_id}/pose_raw", Pose2D, queue_size=10)
-        self.pose_pub = rospy.Publisher(f"/{self.sphero_id}/pose", Pose2D, queue_size=1)
+        # self.pose_pub = rospy.Publisher(f"/{self.sphero_id}/pose", Pose2D, queue_size=1)
         self.initial_heading_pub = rospy.Publisher(f"/{self.sphero_id}/initial_heading", HeadingStamped, queue_size=1, latch=True)
 
         self.goal = None
         self.goal_sub = rospy.Subscriber(f"/{self.sphero_id}/goal", PositionGoal, goal_cb) # this should be in rviz probably
+        self.ekf_sub = rospy.Subscriber(f"/{self.sphero_id}_ekf/odom_combined", PoseWithCovarianceStamped, self.ekf_cb, callback_args=self.sphero_id)
         # self.pose_sub = rospy.Subscriber(f"/{self.sphero_id}/pose", Pose2D, pose_cb, callback_args=self.sphero_id)
 
         self.initial_heading_samples = []
@@ -194,6 +195,11 @@ ekf_pose2d = dict()
 def pose_cb(data, sphero_id):
     ekf_pose2d[sphero_id] = (data.x, data.y, data.theta)
     # rospy.loginfo(f"{sphero_id} ekf_cb: {ekf_pose2d[sphero_id][0]:1.1f}, {ekf_pose2d[sphero_id][1]:1.1f}, {ekf_pose2d[sphero_id][2]:1.1f}")
+
+def ekf_cb(msg, name):
+    r,p,y = euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
+    yaw = utils.cap_0_to_2pi(y)
+    ekf_pose2d[name] = (msg.pose.pose.position.x, msg.pose.pose.position.y, yaw)
 
 goal_pose2d = dict()
 def goal_cb(position_goal):
@@ -377,10 +383,32 @@ def main():
                         rospy.loginfo(f"{I.sphero_id} n {len(I.initial_heading_samples)} {np.std(I.initial_heading_samples):1.2f} theta {theta:1.2f}")
                 else:
                     if (rospy.get_time() - I.last_detected_color_ts < 0.2):
-                        # I.raw_pose_pub.publish(Pose2D(x, y, offset_theta))
-                        data = Pose2D(x, y, theta)
-                        I.pose_pub.publish(data)
-                        pose_cb(data, I.sphero_id)
+                        # data = Pose2D(x, y, theta)
+                        # I.pose_pub.publish(data)
+                        # pose_cb(data, I.sphero_id)
+                        odom_msg = Odometry()
+                        odom_msg.header.stamp = rospy.Time.now()
+                        odom_msg.header.frame_id = "odom"
+                        p = PoseWithCovariance()
+                        p.pose.position = Point(x,y,0)
+
+                        # Calculate the offset theta considering the initial heading of the sphero. This must be done so the ekf sees consistent data between the orientation published in interface.py and this detection
+
+                        q = quaternion_from_euler(0., 0., theta)
+                        p.pose.orientation = Quaternion(*q)
+                        p.covariance = np.array([ # ignore covairance between factors, but the way we're doing this we get a lot of jitter, so x and y definitely have some variance. In pixels.
+                            [POSITION_COVARIANCE, 0., 0., 0., 0., 0.], # pixels
+                            [0., POSITION_COVARIANCE, 0., 0., 0., 0.],  # pixels
+                            [0., 0., 1e-6, 0., 0., 0.],
+                            [0., 0., 0., 1e-6, 0., 0.],
+                            [0., 0., 0., 0., 1e-6, 0.],
+                            [0., 0., 0., 0., 0., ORIENTATION_COVARIANCE], # radians
+                            ]).flatten() # TODO
+                        tw = TwistWithCovariance() # TODO
+                        odom_msg.pose = p
+                        odom_msg.twist = tw
+                        I.odom_pub.publish(odom_msg)
+                        I.last_detected_color_pose = None
 
 
 
