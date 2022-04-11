@@ -5,6 +5,7 @@ opencv code by
 Email: siddharthchandragzb@gmail.com
 '''
 
+from ast import Return
 from concurrent.futures import process
 from math import atan2, degrees
 import traceback
@@ -43,6 +44,7 @@ These parameters must be tuned for image size
 ''''''
 
 CHECK_FOR_UPDATED_PARAMS = True
+VIDEO_DIM = (2040, 1080)
 
 
 global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE, VERBOSE, SHOW_IMAGES, LOWER_THRESHOLD, UPPER_THRESHOLD, NINE_SHARPEN_KERNEL, BLUR_KERNEL_SIZE, MORPH_RECT_SIZE
@@ -94,6 +96,7 @@ class VisionDetect:
         self.last_detected_color_ts = 0.
         self.last_detected_color_pose = None
         self.theta_smoother = [] # low pass filter for theta
+        self.history_pose = []
 
         # self.odom_pub = rospy.Publisher(f"/{self.sphero_id}/odom", Odometry, queue_size=10)
         # self.raw_pose_pub = rospy.Publisher(f"/{self.spheroq_id}/pose_raw", Pose2D, queue_size=10)
@@ -102,10 +105,14 @@ class VisionDetect:
 
         self.goal = None
         self.goal_sub = rospy.Subscriber(f"/{self.sphero_id}/goal", PositionGoal, goal_cb) # this should be in rviz probably
+        self.cmd_sub = rospy.Subscriber(f"/{self.sphero_id}/cmd", HeadingStamped, cmd_cb, callback_args=self.sphero_id)
         # self.pose_sub = rospy.Subscriber(f"/{self.sphero_id}/pose", Pose2D, pose_cb, callback_args=self.sphero_id)
 
         self.initial_heading_samples = []
         self.initial_heading = None
+
+        self.tracker_initialized = False
+        self.tracker = cv2.TrackerMIL_create()
 
     def read_image(self, image):
         self.image = image
@@ -174,9 +181,27 @@ class VisionDetect:
         # self.theta_smoother.append(theta)
         # if len(self.theta_smoother) > 10: self.theta_smoother.pop(0)
         # theta = sum(self.theta_smoother)/len(self.theta_smoother)
+        p = (x_img, y_img, theta)
+        # if self.sphero_id == "sd1": print(f"sd1 {p}")
+        
+        if len(self.history_pose) > 10: self.history_pose.pop(0)
+        self.history_pose.append(p[:2])
 
-        self.last_detected_color_pose = (x_img, y_img, theta)
+        self.last_detected_color_pose = p
         self.last_detected_color_ts = rospy.get_time()
+
+    def tracking_stationary(self):
+        '''
+        Return a boolean indicating whether im tracking a stationary sphero
+        '''
+        # check if the recent history doesn't move.
+        hl = 4
+        if self.history_pose.__len__() < hl: return True
+        dp = np.diff(self.history_pose[-4:])
+        if np.sum(dp[0]) < 10 and np.sum(dp[1]) < 10:
+            return True
+        else: 
+            return False
 
     def goal_callback(self, msg):
         self.goal = msg
@@ -196,8 +221,12 @@ def pose_cb(data, sphero_id):
     # rospy.loginfo(f"{sphero_id} ekf_cb: {ekf_pose2d[sphero_id][0]:1.1f}, {ekf_pose2d[sphero_id][1]:1.1f}, {ekf_pose2d[sphero_id][2]:1.1f}")
 
 goal_pose2d = dict()
-def goal_cb(position_goal):
+def goal_cb(position_goal: HeadingStamped):
     goal_pose2d[position_goal.sphero_name] = position_goal.goal
+
+last_issued_cmds = dict()
+def cmd_cb(cmd, name):
+    last_issued_cmds[name] = cmd
 
 detectors_dict = dict()
 def sphero_names_cb(msg):
@@ -251,7 +280,7 @@ def main():
         cv2.moveWindow('image', 0, 0)
 
     # >>>> Open Video Stream
-    video = utils.init_videocapture(channel=0 if IN_LAB else 2)
+    video = utils.init_videocapture(channel=0 if IN_LAB else 2, width=VIDEO_DIM[0], height=VIDEO_DIM[1])
     # Exit if video not opened.
     if not video.isOpened():
         print("Could not open video")
@@ -313,43 +342,78 @@ def main():
             sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
             close = cv2.morphologyEx(sharpen, cv2.MORPH_CLOSE, kernel, iterations=2)
-            
+            cv2.imshow(f'close_{color_string}', close)
             id = tp.colorstring_to_id[color_string] # we know the id because we're searching specifically for the color
             if id not in detectors_dict.keys(): continue
+            else: I = detectors_dict[id]
 
             cnts = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
             cnts = cnts[0] if len(cnts) == 2 else cnts[1]
             if len(cnts) == 0: continue
+            
             c = cnts[0]
+            bbox = cv2.boundingRect(c)
+
+            gray = cv2.bitwise_and(frame, frame, mask=f)
+            gray = cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
+            if not I.tracker_initialized:
+                print(f"before init {bbox}")
+                rospy.sleep(0.1)
+                I.tracker.init(close, bbox)
+                rospy.sleep(0.1)
+                I.tracker_initialized = True
+                print(f"after init")
+            else:
+                ok, bbox = I.tracker.update(close)
+
             area = cv2.contourArea(c)
             if (area < MIN_CONTOUR_AREA or area > MAX_CONTOUR_AREA):
                 cv2.imshow(f'rejected_close_{color_string}', close)
                 # print(f"Contour for {id} is too small or too large: {area}")
+                # TODO: Do I need to acknowledge a missed frame here too?
                 continue
             else:
                 cv2.imshow(f'close_{color_string}', close)
 
-            x,y,w,h = cv2.boundingRect(c)
-            cx, cy = x+(w//2), y+(h//2)
+            x,y,w,h = bbox
+            cx, cy = int(x+(w//2)), int(y+(h//2))
 
-            mask0 = np.zeros((height,width), np.uint8)
-            cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.8), (255,255,255), -1)
-            mask1 = np.zeros((height,width), np.uint8)
-            cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
-            rim_mask = cv2.bitwise_and(cv2.bitwise_not(mask0), mask1)
-            rim_img = cv2.bitwise_and(image, image, mask=rim_mask)
-            rim_img = cv2.cvtColor(rim_img, cv2.COLOR_RGB2HSV)
-            cv2.imshow(f'rim_img_{color_string}', rim_img)
+            # mask0 = np.zeros((height,width), np.uint8)
+            # cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.8), (255,255,255), -1)
+            # mask1 = np.zeros((height,width), np.uint8)
+            # cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
+            # rim_mask = cv2.bitwise_and(cv2.bitwise_not(mask0), mask1)
+            # rim_img = cv2.bitwise_and(image, image, mask=rim_mask)
+            # rim_img = cv2.cvtColor(rim_img, cv2.COLOR_RGB2HSV)
+            # cv2.imshow(f'rim_img_{color_string}', rim_img)
 
-            _, fwd_center, _ = detectors_dict[id].processColor(rim_img, lower=(FWD_H_RANGE[0], FWD_S_RANGE[0], FWD_V_RANGE[0]), upper=(FWD_H_RANGE[1], FWD_S_RANGE[1], FWD_V_RANGE[1]), note="fwd")
-            if not fwd_center: continue
-            fx,fy = fwd_center
+            # # We should only care about the fwd center when we're not using direction of travel to determine theta
+            # _, fwd_center, _ = I.processColor(rim_img, lower=(FWD_H_RANGE[0], FWD_S_RANGE[0], FWD_V_RANGE[0]), upper=(FWD_H_RANGE[1], FWD_S_RANGE[1], FWD_V_RANGE[1]), note="fwd")
+            # theta = None
+            # if fwd_center:
+            #     fx,fy = fwd_center
+            #     theta = atan2(-fy + cy, fx - cx)
+            #     theta = utils.cap_0_to_2pi(theta)
+            #     cv2.line(image, (cx,cy), (fx,fy), (255,0,0), 2)
+            #     if I.sphero_id == "sd1": print(f"sd1: {theta:1.1f} tracked")
+            # elif not I.tracking_stationary():
+            #     # if we're not staying still, we can use our differential position as theta
+            #     p0, p1 = I.history_pose[-2:]
+            #     if p0 is not None and p1 is not None:
+            #         theta = np.arctan2(p1[1] - p0[1], p1[0] - p1[0])
 
-            theta = atan2(-fy + cy, fx - cx)
-            theta = utils.cap_0_to_2pi(theta)
-            detectors_dict[id].set_detected_position(cx, cy, theta)
+            if not last_issued_cmds[id]: continue
+            theta = last_issued_cmds[id].theta + I.initial_heading
 
-            cv2.line(image, (cx,cy), (fx,fy), (255,0,0), 2)
+
+            # I.set_detected_position(cx, cy, theta)
+            p1 = (int(bbox[0]), int(bbox[1]))
+            p2 = (int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3]))
+            cv2.rectangle(image, p1, p2, (25,155,155), 2, 1)
+            cx = (p1[0]+p2[0])/2
+            cy = (p1[1]+p2[1])/2
+
+            I.set_detected_position(cx, cy, theta)
 
         cv2.imshow('image', image)
         # cv2.imshow('frame_hsv', frame_hsv)
@@ -364,6 +428,7 @@ def main():
                 x,y,theta = pose_img
                 # make sure we have a baseline heading for each sphero
                 if I.initial_heading is None:
+                    if theta is None: continue
                     I.initial_heading_samples.append(theta)
                     if (len(I.initial_heading_samples) > 10 and np.std(I.initial_heading_samples) < 0.1):
                         rospy.loginfo(f"Setting initial heading for {I.sphero_id} to {np.mean(I.initial_heading_samples):1.2f}")
@@ -374,7 +439,7 @@ def main():
                         I.initial_heading_samples = []
                     else:
                         rospy.loginfo(f"Not enough samples to set initial heading for {I.sphero_id}")
-                        rospy.loginfo(f"{I.sphero_id} n {len(I.initial_heading_samples)} {np.std(I.initial_heading_samples):1.2f} theta {theta:1.2f}")
+                        if theta: rospy.loginfo(f"{I.sphero_id} n {len(I.initial_heading_samples)} {np.std(I.initial_heading_samples):1.2f} theta {theta:1.2f}")
                 else:
                     if (rospy.get_time() - I.last_detected_color_ts < 0.2):
                         # I.raw_pose_pub.publish(Pose2D(x, y, offset_theta))

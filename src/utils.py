@@ -1,8 +1,10 @@
 
 import math
+import numpy as np
 import cv2
 from geometry_msgs.msg import Pose2D
 from tf.transformations import euler_from_quaternion
+from IPython import embed
 
 def posewithcovariancestamped_to_pose2d(msg):
     r,p,yaw = euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
@@ -31,6 +33,12 @@ def cap_0_to_360(angle):
     while (angle > 360): angle -= 360
     while (angle < 0): angle += 360
     return angle
+
+def cartesian_to_polar(x, y, origin, MAX_Y):
+    r = np.sqrt( (x-origin[0])**2 + (y-origin[1]) ** 2)
+    theta = np.arctan2( ((MAX_Y - y) - origin[1]), (x - origin[0]) )
+    # embed()
+    return (r,theta)
 
 def list_vide_ports():
     """
@@ -67,3 +75,13 @@ def init_videocapture(channel=0,width=2048, height=1080, scale=2):
     camera.set(cv2.CAP_PROP_FPS, 30)
     # camera.set(28, 100)
     return camera
+
+
+if __name__ == "__main__":
+    origin = 2080/2. , 0.
+    n=3
+    # for y in np.linspace(1080, 0, n):
+    y = 900
+    for x in np.linspace(0, 2080, 10):
+        r,theta = cartesian_to_polar(x, y, origin, 1080)
+        print(f"{x:.1f} {y:.1f} -> {r:.1f} {theta:.2f}")

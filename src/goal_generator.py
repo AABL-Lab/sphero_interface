@@ -19,7 +19,7 @@ h_range = (rospy.get_param("/tracker_params/min_height", 200.), rospy.get_param(
 GOAL_THRESHOLD = 2 * rospy.get_param("/param_server/expected_sphero_radius", default=30) # How far we can be from a goal before its considered achieved
 
 
-PRESET_GOALS = {"sd1": [(350, 200), (850, 200)]}
+PRESET_GOALS = {"sd1": [(350, 200), (750, 200)]}
 PRESET_GOALS_IDX = {"sd1": 0}
 
 active_goals = dict()
