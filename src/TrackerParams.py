@@ -4,7 +4,6 @@ TODO: This should go into a rosparam server
 '''
 from typing import NamedTuple
 from matplotlib.colors import rgb_to_hsv
-from optax import lamb
 import rospy
 
 class TrackerParams(NamedTuple):

@@ -18,6 +18,7 @@ import utils
 import time
 
 import rospy
+from sensor_msgs.msg import Imu
 from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped, PoseWithCovariance, TwistWithCovariance, Pose, Twist, Point, Quaternion
 from sphero_interface.msg import SpheroNames, PositionGoal, HeadingStamped
 import matplotlib.pyplot as plt
@@ -106,7 +107,9 @@ class VisionDetect:
         self.goal = None
         self.goal_sub = rospy.Subscriber(f"/{self.sphero_id}/goal", PositionGoal, goal_cb) # this should be in rviz probably
         self.cmd_sub = rospy.Subscriber(f"/{self.sphero_id}/cmd", HeadingStamped, cmd_cb, callback_args=self.sphero_id)
-        # self.pose_sub = rospy.Subscriber(f"/{self.sphero_id}/pose", Pose2D, pose_cb, callback_args=self.sphero_id)
+        self.ekf_sub = rospy.Subscriber(f"/{self.sphero_id}_ekf/odom_combined", PoseWithCovarianceStamped, self.ekf_cb, callback_args=self.sphero_id)
+        self.odom_sub = rospy.Subscriber(f"/{self.sphero_id}/odom", Odometry, self.odom_cb, callback_args=self.sphero_id)
+        self.imu_sub = rospy.Subscriber(f"{self.sphero_id}/imu_data", Imu, self.imu_cb, callback_args=self.sphero_id) # publish for the ekf node
 
         self.initial_heading_samples = []
         self.initial_heading = None
@@ -227,6 +230,10 @@ def goal_cb(position_goal: HeadingStamped):
 last_issued_cmds = dict()
 def cmd_cb(cmd, name):
     last_issued_cmds[name] = cmd
+    
+imu_data = dict()
+def imu_cb(data, sphero_id):
+    imu_data[sphero_id] = euler_from_quaternion([data.orientation.w, data.orientation.x, data.orientation.y, data.orientation.z])
 
 detectors_dict = dict()
 def sphero_names_cb(msg):
@@ -403,8 +410,11 @@ def main():
             #         theta = np.arctan2(p1[1] - p0[1], p1[0] - p1[0])
 
             if not last_issued_cmds[id]: continue
-            theta = last_issued_cmds[id].theta + I.initial_heading
+            theta_cmded = last_issued_cmds[id].theta + I.initial_heading
 
+            if not imu_data[id]: continue
+            theta_imu = (imu_data[id][2] - np.pi) + I.initial_heading # imu starts at -pi. Convert to 0 and add initial heading.
+            theta_imu = utils.cap_0_to_2pi(theta_imu)
 
             # I.set_detected_position(cx, cy, theta)
             p1 = (int(bbox[0]), int(bbox[1]))
@@ -413,6 +423,8 @@ def main():
             cx = (p1[0]+p2[0])/2
             cy = (p1[1]+p2[1])/2
 
+            print(f"{id}: theta_cmd {theta_cmded:1.1f}, {theta_imu:1.1f}")
+            theta = (theta_imu + theta_cmded) / 2.
             I.set_detected_position(cx, cy, theta)
 
         cv2.imshow('image', image)
