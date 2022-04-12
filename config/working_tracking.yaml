@@ -4,14 +4,14 @@ dictitems:
   blue_s: 200
   blue_v: 251
   blur_kernel_size: 3
-  expected_sphero_radius: 17
+  expected_sphero_radius: 16
   fwd_hue_max: 255
   fwd_hue_min: 0
   fwd_sat_max: 255
   fwd_sat_min: 0
   fwd_val_max: 255
   fwd_val_min: 220
-  green_h: 78
+  green_h: 90
   green_s: 215
   green_v: 200
   groups: !!python/object/new:dynamic_reconfigure.encoding.Config
@@ -20,14 +20,14 @@ dictitems:
       blue_s: 200
       blue_v: 251
       blur_kernel_size: 3
-      expected_sphero_radius: 17
+      expected_sphero_radius: 16
       fwd_hue_max: 255
       fwd_hue_min: 0
       fwd_sat_max: 255
       fwd_sat_min: 0
       fwd_val_max: 255
       fwd_val_min: 220
-      green_h: 78
+      green_h: 90
       green_s: 215
       green_v: 200
       groups: !!python/object/new:dynamic_reconfigure.encoding.Config
@@ -37,7 +37,7 @@ dictitems:
       id: 0
       lower_threshold: 233
       max_contour_area: 300
-      min_contour_area: 50
+      min_contour_area: 40
       morph_rect_size: 3
       name: Default
       nine_sharpen_kernel: true
@@ -47,11 +47,11 @@ dictitems:
       parent: 0
       position_covariance: 3.0
       red_h: 175
-      red_s: 162
-      red_v: 200
-      sat_max: 15
-      sat_min: 15
-      show_pipeline: true
+      red_s: 180
+      red_v: 233
+      sat_max: 20
+      sat_min: 20
+      show_pipeline: false
       state: true
       type: ''
       upper_threshold: 255
@@ -63,17 +63,17 @@ dictitems:
   hue_min: 10
   lower_threshold: 233
   max_contour_area: 300
-  min_contour_area: 50
+  min_contour_area: 40
   morph_rect_size: 3
   nine_sharpen_kernel: true
   orientation_covariance: 0.1
   position_covariance: 3.0
   red_h: 175
-  red_s: 162
-  red_v: 200
-  sat_max: 15
-  sat_min: 15
-  show_pipeline: true
+  red_s: 180
+  red_v: 233
+  sat_max: 20
+  sat_min: 20
+  show_pipeline: false
   upper_threshold: 255
   val_max: 50
   val_min: 50

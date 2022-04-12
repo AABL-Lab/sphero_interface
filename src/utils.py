@@ -69,8 +69,8 @@ def list_vide_ports():
 def init_videocapture(channel=0,width=2048, height=1080, scale=2):
 # def init_videocapture(channel=0,width=4096, height=2160, scale=2):
     camera = cv2.VideoCapture(channel, cv2.CAP_V4L2)
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, width//2)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height//2)
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
     camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
     camera.set(cv2.CAP_PROP_FPS, 30)
     # camera.set(28, 100)

@@ -47,8 +47,10 @@ def time_limit(seconds):
 IN_LAB = False if os.environ.get("IN_LAB") is None else True
 print(f"IN_LAB: {IN_LAB}")
 
+from TrackerParams import GREEN_RGB, WHITE_RGB, Sphero_RGB_Color
+
 spheros = {
-    "EC:73:F2:19:0E:CA": None,
+    # "EC:73:F2:19:0E:CA": None,
     # "CA:64:39:FC:74:FB": None,
     "D1:FC:A0:92:D5:19": None,
     # "D9:81:9E:B8:AD:DB": None,
@@ -59,7 +61,7 @@ spheros = {
     # "FD:B5:2E:2B:2A:3C": None,
     # "FB:E7:20:44:74:E4": None,
     # "D7:98:82:CD:1F:EA": None,
-    # "C8:2E:9A:E9:37:16": None,
+    "C8:2E:9A:E9:37:16": None,
     # "D1:7E:07:ED:D1:37": None,
     # "CD:7D:FA:67:54:AB": None,
     # "F0:35:04:88:07:76": None,
@@ -75,7 +77,6 @@ ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
 SENSOR_READ = True
 STABILIZE_SPHEROS = False
 
-from TrackerParams import GREEN_RGB, WHITE_RGB, Sphero_RGB_Color
 '''
 Wrapped Sphero wraps the subscribers and publishers for one sphero.
 Also publishes the last issued command for state tracking.
@@ -94,6 +95,7 @@ class WrappedSphero(Sphero):
 
         self.light_pub = rospy.Publisher(self.name+"/light", Float32, queue_size=1)
         self.ekf_orientation_pub = rospy.Publisher(self.name+"/imu_data", Imu, queue_size=1) # publish for the ekf node
+        self.cmd_echo_pub = rospy.Publisher(self.name+"/echo_cmd", HeadingStamped, queue_size=1)
         
         self.n_tries = 0
 
@@ -149,6 +151,7 @@ class WrappedSphero(Sphero):
         self.cmd.v = min(100, max(self.cmd.v, -100))
         self.cmd.theta = min(360, max(self.cmd.theta, 0)) # todo: correct for wrap
 
+        self.cmd_echo_pub.publish(self.cmd)
         self.driving.drive_with_heading(int(self.cmd.v), int(self.cmd.theta), Direction.forward)
 
     def color_cb(self, color_request):
@@ -181,7 +184,7 @@ class WrappedSphero(Sphero):
         # offset_yaw = y + math.pi
         imu.orientation = orientation #quaternion_from_euler(r, p, offset_yaw)
 
-        print(f"{self.name} {r:1.2f} {p:1.2f} {y:1.2f}")
+        # print(f"{self.name} {r:1.2f} {p:1.2f} {y:1.2f}")
         self.ekf_orientation_pub.publish(imu)
 
     def step(self):
@@ -208,6 +211,7 @@ class WrappedSphero(Sphero):
             with time_limit(1):
                 self.light_pub.publish(self.sensor.get_ambient_light_sensor_value())
                 if (self.cmd.v == 0): # make sure 0s get through
+                    self.cmd_echo_pub.publish(HeadingStamped(rospy.get_time(), v, theta))
                     self.driving.drive_with_heading(int(v), int(theta), Direction.forward)
         except TimeoutException as e:
             rospy.loginfo(f"{self.name} timed out on step.")

@@ -139,7 +139,7 @@ class TrajectoryFollowerGroup():
             adjusted_theta_goal = theta_goal - initial_heading
             if VERBOSE: rospy.loginfo(f"target {theta_goal:1.1f} adjusted {adjusted_theta_goal:1.1f}. th0 {initial_heading:1.1f} distance_to_goal {distance_to_goal:1.2f}")
 
-            cmd.v = self.distance_to_speed(distance_to_goal) if abs(diff_theta_world) < (math.pi / 4.) else 0 # Only move forward if we're mostly aligned with the goal
+            cmd.v = self.distance_to_speed(distance_to_goal) if abs(diff_theta_world) < (math.pi / 3.) else 0 # Only move forward if we're mostly aligned with the goal
             cmd.theta = rad2deg(utils.cap_0_to_2pi(2*math.pi - adjusted_theta_goal)) # NOTE: The sphero treats clockwise as positive theta and counterclockwise as negative theta, so we're flipping it here so we can use a standard approach
             if VERBOSE: rospy.loginfo(f"current x:{curr_pose.x:1.1f} y:{curr_pose.y:1.1f} theta:{curr_pose.theta:1.1f} goal {goal_pose.x:1.1f} {goal_pose.y:1.1f} {goal_pose.theta:1.1f} cmd {cmd.v:1.1f} {cmd.theta:1.1f} diff_theta_world {diff_theta_world:1.1f}")
         

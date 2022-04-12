@@ -31,8 +31,8 @@ GREEN_HSV = (145, 30, 120)
 WHITE_RGB = (255, 255, 255)
 WHITE_HSV = (0, 0, 255)
 
-sphero_ids = ["sd9", "sf8", "se9", "sf6", "sdc", "sec", "sca", "sfd", "sfb", "sd7", "sd1", "sc8", "scD", "sf0", "sc9"]
-
+spheros_in_use = ["sd1","sc8", "sec"]
+ 
 Sphero_RGB_Color = {
     "sd9": RED_RGB, # jss home
     "sf8": BLUE_RGB, # jss home
@@ -42,10 +42,10 @@ Sphero_RGB_Color = {
     "sec": RED_RGB, # in lab
     "sca": BLUE_RGB, # in lab
     "sd1": GREEN_RGB, # in lab
+    "sc8": BLUE_RGB, # in lab
     "sfd": RED_RGB,
     "sfb": RED_RGB,
     "sd7": RED_RGB,
-    "sc8": YELLOW_RGB, # in lab
     "scD": RED_RGB,
     "sf0": RED_RGB,
     "sc9": RED_RGB,
@@ -61,7 +61,7 @@ def string_for_color(color):
     
 id_to_colorstring = {k: string_for_color(v) for k, v in Sphero_RGB_Color.items()}
 
-colorstring_to_id = {id_to_colorstring[k]:k for k in ["sd9", "sf8", "sec", "sca", "sd1"]}
+colorstring_to_id = {id_to_colorstring[k]:k for k in spheros_in_use}
 
 Sphero_HSV_Color = dict()
 def populate_hsv_dict():

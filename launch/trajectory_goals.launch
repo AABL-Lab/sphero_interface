@@ -1,4 +1,7 @@
 <launch>
+    <!-- <node name="param_server" pkg="sphero_interface" type="param_server.py" output="screen"/> -->
+    <!-- <node name="dynamic_reconfigure_load" pkg="dynamic_reconfigure" type="dynparam" args="load /param_server $(find sphero_interface)/config/working_tracking.yaml" /> -->
+    <node name="tracker" pkg="sphero_interface" type="tracker.py" output="screen"/>
     <node name="trajectory_follower" pkg="sphero_interface" type="trajectory_follower.py" output="screen"/>
     <node name="goal_generator" pkg="sphero_interface" type="goal_generator.py" output="screen"/>
 </launch>

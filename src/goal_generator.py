@@ -14,12 +14,12 @@ from geometry_msgs.msg import Pose2D
 from sphero_interface.msg import SpheroNames, PositionGoal
 from geometry_msgs.msg import Pose2D
 
-w_range = (rospy.get_param("/tracker_params/min_width", 200.), rospy.get_param("/tracker_params/max_width", 650.))
-h_range = (rospy.get_param("/tracker_params/min_height", 200.), rospy.get_param("/tracker_params/max_height", 450))
+w_range = (rospy.get_param("/tracker_params/min_width", 300.), rospy.get_param("/tracker_params/max_width", 700.))
+h_range = (rospy.get_param("/tracker_params/min_height", 150.), rospy.get_param("/tracker_params/max_height", 450))
 GOAL_THRESHOLD = 2 * rospy.get_param("/param_server/expected_sphero_radius", default=30) # How far we can be from a goal before its considered achieved
 
 
-PRESET_GOALS = {"sd1": [(350, 200), (750, 200)]}
+PRESET_GOALS = {} #{"sd1": [(350, 200), (750, 200)]}
 PRESET_GOALS_IDX = {"sd1": 0}
 
 active_goals = dict()

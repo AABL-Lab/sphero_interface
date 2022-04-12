@@ -5,7 +5,7 @@ opencv code by
 Email: siddharthchandragzb@gmail.com
 '''
 
-from ast import Return
+from ast import Return, Try
 from concurrent.futures import process
 from math import atan2, degrees
 import traceback
@@ -44,8 +44,26 @@ These parameters must be tuned for image size
 # upper and lower hsv bounds for color extraction
 ''''''
 
+import signal
+from contextlib import contextmanager
+
+class TimeoutException(Exception): pass
+
+@contextmanager
+def time_limit(seconds):
+    def signal_handler(signum, frame):
+        raise TimeoutException("Timed out!")
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+
 CHECK_FOR_UPDATED_PARAMS = True
-VIDEO_DIM = (2040, 1080)
+VIDEO_DIM = (1020, 540)
+USE_TRACKERS = False # CV2 trackers hang on init for an unknown reason
+INTERACTION_ZONE = (VIDEO_DIM[0]//2, VIDEO_DIM[1])
 
 
 global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE, VERBOSE, SHOW_IMAGES, LOWER_THRESHOLD, UPPER_THRESHOLD, NINE_SHARPEN_KERNEL, BLUR_KERNEL_SIZE, MORPH_RECT_SIZE
@@ -106,13 +124,15 @@ class VisionDetect:
 
         self.goal = None
         self.goal_sub = rospy.Subscriber(f"/{self.sphero_id}/goal", PositionGoal, goal_cb) # this should be in rviz probably
-        self.cmd_sub = rospy.Subscriber(f"/{self.sphero_id}/cmd", HeadingStamped, cmd_cb, callback_args=self.sphero_id)
-        self.ekf_sub = rospy.Subscriber(f"/{self.sphero_id}_ekf/odom_combined", PoseWithCovarianceStamped, self.ekf_cb, callback_args=self.sphero_id)
-        self.odom_sub = rospy.Subscriber(f"/{self.sphero_id}/odom", Odometry, self.odom_cb, callback_args=self.sphero_id)
-        self.imu_sub = rospy.Subscriber(f"{self.sphero_id}/imu_data", Imu, self.imu_cb, callback_args=self.sphero_id) # publish for the ekf node
+        self.cmd_sub = rospy.Subscriber(f"/{self.sphero_id}/echo_cmd", HeadingStamped, cmd_cb, callback_args=self.sphero_id)
+        # self.ekf_sub = rospy.Subscriber(f"/{self.sphero_id}_ekf/odom_combined", PoseWithCovarianceStamped, self.ekf_cb, callback_args=self.sphero_id)
+        # self.odom_sub = rospy.Subscriber(f"/{self.sphero_id}/odom", Odometry, self.odom_cb, callback_args=self.sphero_id)
+        self.imu_sub = rospy.Subscriber(f"{self.sphero_id}/imu_data", Imu, imu_cb, callback_args=self.sphero_id) # publish for the ekf node
 
         self.initial_heading_samples = []
         self.initial_heading = None
+        self.initial_imu_heading_samples = []
+        self.initial_imu_heading = None
 
         self.tracker_initialized = False
         self.tracker = cv2.TrackerMIL_create()
@@ -349,7 +369,7 @@ def main():
             sharpen = cv2.filter2D(blur, -1, sharpen_kernel)
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_RECT_SIZE,MORPH_RECT_SIZE))
             close = cv2.morphologyEx(sharpen, cv2.MORPH_CLOSE, kernel, iterations=2)
-            cv2.imshow(f'close_{color_string}', close)
+            if SHOW_IMAGES: cv2.imshow(f'close_{color_string}', close)
             id = tp.colorstring_to_id[color_string] # we know the id because we're searching specifically for the color
             if id not in detectors_dict.keys(): continue
             else: I = detectors_dict[id]
@@ -361,27 +381,27 @@ def main():
             c = cnts[0]
             bbox = cv2.boundingRect(c)
 
-            gray = cv2.bitwise_and(frame, frame, mask=f)
-            gray = cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
-            if not I.tracker_initialized:
-                print(f"before init {bbox}")
-                rospy.sleep(0.1)
-                I.tracker.init(close, bbox)
-                rospy.sleep(0.1)
-                I.tracker_initialized = True
-                print(f"after init")
-            else:
-                ok, bbox = I.tracker.update(close)
+            # gray = cv2.bitwise_and(frame, frame, mask=f)
+            # gray = cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
+            if USE_TRACKERS:
+                if I.tracker_initialized:
+                    try:
+                        with time_limit(1):
+                            I.tracker.initialized = I.tracker.init(close, bbox)
+                            print(f"{I.sphero_id} tracker init {I.tracker_initialized}")
+                    except Exception as e:
+                        rospy.logwarn(f"Failed to initialize tracker for {I.sphero_id}")
+                else:
+                    ok, bbox = I.tracker.update(close)
 
             area = cv2.contourArea(c)
             if (area < MIN_CONTOUR_AREA or area > MAX_CONTOUR_AREA):
-                cv2.imshow(f'rejected_close_{color_string}', close)
+                if SHOW_IMAGES: cv2.imshow(f'rejected_close_{color_string}', close)
                 # print(f"Contour for {id} is too small or too large: {area}")
                 # TODO: Do I need to acknowledge a missed frame here too?
                 continue
             else:
-                cv2.imshow(f'close_{color_string}', close)
-
+                if SHOW_IMAGES: cv2.imshow(f'close_{color_string}', close)
             x,y,w,h = bbox
             cx, cy = int(x+(w//2)), int(y+(h//2))
 
@@ -409,24 +429,49 @@ def main():
             #     if p0 is not None and p1 is not None:
             #         theta = np.arctan2(p1[1] - p0[1], p1[0] - p1[0])
 
-            if not last_issued_cmds[id]: continue
-            theta_cmded = last_issued_cmds[id].theta + I.initial_heading
+            if I.initial_heading and I.initial_imu_heading:
+                last_cmded = np.deg2rad(last_issued_cmds[id].theta) if id in last_issued_cmds else 0.
+                theta_cmded = I.initial_heading - last_cmded
+                theta_cmded = utils.cap_0_to_2pi(theta_cmded)
+                # print(f"CAM {last_cmded:1.1f} + {I.initial_heading:1.1f}")
 
-            if not imu_data[id]: continue
-            theta_imu = (imu_data[id][2] - np.pi) + I.initial_heading # imu starts at -pi. Convert to 0 and add initial heading.
-            theta_imu = utils.cap_0_to_2pi(theta_imu)
+                if id not in imu_data: continue
+                theta_imu = utils.cap_0_to_2pi(imu_data[id][2]) - utils.cap_0_to_2pi(I.initial_imu_heading) + I.initial_heading # relative IMU offset added to initial heading.
+                theta_imu = utils.cap_0_to_2pi(theta_imu)
+                # print(f"IMU {imu_data[id][2]:1.1f} + {I.initial_imu_heading:1.1f} + {I.initial_heading:1.1f} = {theta_imu:1.1f}")
 
-            # I.set_detected_position(cx, cy, theta)
-            p1 = (int(bbox[0]), int(bbox[1]))
-            p2 = (int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3]))
-            cv2.rectangle(image, p1, p2, (25,155,155), 2, 1)
-            cx = (p1[0]+p2[0])/2
-            cy = (p1[1]+p2[1])/2
+                if USE_TRACKERS:
+                    p1 = (int(x), int(y))
+                    p2 = (int(x + width), int(y + height))
+                    cv2.rectangle(image, p1, p2, (25,155,155), 2, 1)
 
-            print(f"{id}: theta_cmd {theta_cmded:1.1f}, {theta_imu:1.1f}")
-            theta = (theta_imu + theta_cmded) / 2.
-            I.set_detected_position(cx, cy, theta)
+                # print(f"{id}: theta_cmd {theta_cmded:1.1f}, theta_imu_raw {imu_data[id][2]:1.1f} theta_imu_adjusted {theta_imu:1.1f}")
+                # theta = (theta_imu + theta_cmded) / 2.
+                theta = theta_imu
+                I.set_detected_position(cx, cy, theta)
+            else: # Set heading based on raw untracked vision
+                print(f"{color_string}")
+                mask0 = np.zeros((height,width), np.uint8)
+                cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.8), (255,255,255), -1)
+                mask1 = np.zeros((height,width), np.uint8)
+                cv2.circle(mask1, (cx, cy), int(EXPECTED_SPHERO_RADIUS*1.5), (255,255,255), -1)
+                rim_mask = cv2.bitwise_and(cv2.bitwise_not(mask0), mask1)
+                rim_img = cv2.bitwise_and(image, image, mask=rim_mask)
+                rim_img = cv2.cvtColor(rim_img, cv2.COLOR_RGB2HSV)
+                if SHOW_IMAGES: cv2.imshow(f'rim_img_{color_string}', rim_img)
 
+                _, fwd_center, _ = I.processColor(rim_img, lower=(FWD_H_RANGE[0], FWD_S_RANGE[0], FWD_V_RANGE[0]), upper=(FWD_H_RANGE[1], FWD_S_RANGE[1], FWD_V_RANGE[1]), note="fwd")
+                theta = None
+                if fwd_center:
+                    fx,fy = fwd_center
+                    theta = atan2(-fy + cy, fx - cx)
+                    theta = utils.cap_0_to_2pi(theta)
+                    cv2.line(image, (cx,cy), (fx,fy), (255,0,0), 2)
+                    # if I.sphero_id == "sd1": print(f"sd1: {theta:1.1f} tracked")
+
+                    I.set_detected_position(cx, cy, theta)
+
+        cv2.circle(image, (INTERACTION_ZONE), 100, (255,255,255), 5)
         cv2.imshow('image', image)
         # cv2.imshow('frame_hsv', frame_hsv)
 
@@ -435,6 +480,7 @@ def main():
         cv2.setMouseCallback('image', mouse_cb)
 
         for I in detectors_dict.values():
+            # extract the camera-centric intitial heading
             pose_img = I.last_detected_color_pose
             if pose_img is not None:
                 x,y,theta = pose_img
@@ -458,7 +504,13 @@ def main():
                         data = Pose2D(x, y, theta)
                         I.pose_pub.publish(data)
                         pose_cb(data, I.sphero_id)
-
+            # extract the IMU centric initial heading
+            if not I.initial_imu_heading:
+                if I.sphero_id in imu_data:
+                    I.initial_imu_heading_samples.append(imu_data[I.sphero_id][2])
+                    if I.initial_imu_heading_samples.__len__() >= 10:
+                        I.initial_imu_heading = np.mean(I.initial_imu_heading_samples)
+                        rospy.loginfo(f"{I.sphero_id} initial imu {I.initial_imu_heading:1.1f}")
 
 
         if (ekf_pose2d):
@@ -474,7 +526,6 @@ def main():
 
             # Plot spheros NOTE: Out of place, should be its own node probably
             plot_spheros([ekf_pose2d[key] for key in ekf_pose2d.keys()], [key for key in ekf_pose2d.keys()], ax_x_range=[0, frame.shape[1]], ax_y_range=[frame.shape[0], 0])
-
 
 
         # Exit if ESC pressed
