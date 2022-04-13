@@ -50,7 +50,7 @@ print(f"IN_LAB: {IN_LAB}")
 from TrackerParams import GREEN_RGB, WHITE_RGB, Sphero_RGB_Color
 
 spheros = {
-    # "EC:73:F2:19:0E:CA": None,
+    "EC:73:F2:19:0E:CA": None,
     # "CA:64:39:FC:74:FB": None,
     "D1:FC:A0:92:D5:19": None,
     # "D9:81:9E:B8:AD:DB": None,

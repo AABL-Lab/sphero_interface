@@ -9,10 +9,8 @@ from ast import Return, Try
 from concurrent.futures import process
 from math import atan2, degrees
 import traceback
-from turtle import circle
 
 from IPython import embed
-from torch import bitwise_not, threshold
 from plot_state import plot_spheros
 import utils
 import time
@@ -374,11 +372,10 @@ def main():
             if id not in detectors_dict.keys(): continue
             else: I = detectors_dict[id]
 
-            cnts = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-            cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-            if len(cnts) == 0: continue
+            contours, _ = cv2.findContours(close, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            if len(contours) == 0: continue
             
-            c = cnts[0]
+            c = max(contours, key=cv2.contourArea)
             bbox = cv2.boundingRect(c)
 
             # gray = cv2.bitwise_and(frame, frame, mask=f)
@@ -397,7 +394,7 @@ def main():
             area = cv2.contourArea(c)
             if (area < MIN_CONTOUR_AREA or area > MAX_CONTOUR_AREA):
                 if SHOW_IMAGES: cv2.imshow(f'rejected_close_{color_string}', close)
-                # print(f"Contour for {id} is too small or too large: {area}")
+                print(f"{color_string} Contour for {id} is too small or too large: {area}")
                 # TODO: Do I need to acknowledge a missed frame here too?
                 continue
             else:

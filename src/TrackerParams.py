@@ -31,7 +31,7 @@ GREEN_HSV = (145, 30, 120)
 WHITE_RGB = (255, 255, 255)
 WHITE_HSV = (0, 0, 255)
 
-spheros_in_use = ["sd1","sc8", "sec"]
+spheros_in_use = ["sd1","sc8","sec"]
  
 Sphero_RGB_Color = {
     "sd9": RED_RGB, # jss home

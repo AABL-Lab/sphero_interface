@@ -11,17 +11,21 @@ from std_msgs.msg import Float32
 from sphero_interface.msg import HeadingStamped, SpheroNames
 from geometry_msgs.msg import Pose2D
 import random
+import time
 
 cmd_pubs = {}
 def main():
     rospy.init_node("random_orientations")
+    rospy.Subscriber("sphero_names", SpheroNames, sphero_names_cb)
 
+    rospy.sleep(2.0)
     while not rospy.is_shutdown(): # do work
-        for k,v in cmd_pubs:
+        for k,v in cmd_pubs.items():
             rand_theta = random.randint(0,360)
             v.publish(HeadingStamped(rospy.get_time(), 0.0, rand_theta))
             print(f"sending theta: {rand_theta:1.1f} for {k}.") 
-        rospy.sleep(1.00) # sleep for messages and interrupts
+            time.sleep(random.random()*1.5) # sleep for messages and interrupts
+        # rospy.sleep(random.random()*1.5) # sleep for messages and interrupts
 
 def sphero_names_cb(msg: SpheroNames):
     '''
