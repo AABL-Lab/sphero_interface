@@ -394,7 +394,7 @@ def main():
             area = cv2.contourArea(c)
             if (area < MIN_CONTOUR_AREA or area > MAX_CONTOUR_AREA):
                 if SHOW_IMAGES: cv2.imshow(f'rejected_close_{color_string}', close)
-                print(f"{color_string} Contour for {id} is too small or too large: {area}")
+                # print(f"{color_string} Contour for {id} is too small or too large: {area}")
                 # TODO: Do I need to acknowledge a missed frame here too?
                 continue
             else:
@@ -447,7 +447,7 @@ def main():
                 theta = theta_imu
                 I.set_detected_position(cx, cy, theta)
             else: # Set heading based on raw untracked vision
-                print(f"{color_string}")
+                # print(f"{color_string}")
                 mask0 = np.zeros((height,width), np.uint8)
                 cv2.circle(mask0, (cx, cy), int(EXPECTED_SPHERO_RADIUS*0.8), (255,255,255), -1)
                 mask1 = np.zeros((height,width), np.uint8)

@@ -63,7 +63,7 @@ class TrajectoryFollowerGroup():
                 self.cmd_publishers[name] = rospy.Publisher(name+"/cmd", HeadingStamped, queue_size=1)
                 self.pose_subscribers[name] = rospy.Subscriber(name+"/pose", Pose2D, self.pose_callback, callback_args=name)
                 self.goal_subscribers[name] = rospy.Subscriber(name+"/goal", PositionGoal, self.goal_callback, callback_args=name)
-                self.priority_goal_subscribers[name] = rospy.Subscriber(name+"/priority_goal", PositionGoal, self.priority_goal_callback, callback_args=name)
+                self.priority_goal_subscriber = rospy.Subscriber("/priority_goal", PositionGoal, self.priority_goal_callback)
                 self.initial_heading_subscribers[name] = rospy.Subscriber(name+"/initial_heading", HeadingStamped, self.initial_heading_callback, callback_args=name)
 
     def pose_callback(self, msg, name):
@@ -71,7 +71,10 @@ class TrajectoryFollowerGroup():
         self.pose_ts[name] = time.time()
 
     def goal_callback(self, msg, name): self.goal_poses[name] = msg.goal # TODO: this should either have name as a callback arg or use the name in the messages, not both
-    def priority_goal_callback(self, msg, name): self.priority_goal_poses[name] = msg.goal # TODO: this should either have name as a callback arg or use the name in the messages, not both
+    
+    def priority_goal_callback(self, msg): # TODO: This is probably how all goals should work 
+        self.priority_goal_poses[msg.sphero_name] = msg.goal # TODO: this should either have name as a callback arg or use the name in the messages, not both
+    
     def initial_heading_callback(self, msg, name): self.initial_headings[name] = msg.theta
 
     def update(self):
