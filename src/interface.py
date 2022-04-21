@@ -7,7 +7,7 @@ from turtle import update
 
 from pysphero.device_api.user_io import Color, Pixel
 from pysphero.core import Sphero
-from pysphero.driving import Direction, StabilizationIndex
+from pysphero.driving import Direction
 from pysphero.device_api.sensor import CoreTime, Accelerometer, Quaternion, Attitude, Gyroscope
 
 from sphero_interface.msg import ColorRequest, SpheroNames, HeadingStamped
@@ -72,10 +72,8 @@ spheros = {
 }
 
 MAX_CONNECTION_TRIES = 3
-ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
-
+# ACTIVE_SENSORS = [CoreTime, Quaternion] #Accelerometer, Attitude , Gyroscope]
 SENSOR_READ = True
-STABILIZE_SPHEROS = False
 
 '''
 Wrapped Sphero wraps the subscribers and publishers for one sphero.
@@ -99,45 +97,48 @@ class WrappedSphero(Sphero):
         
         self.n_tries = 0
 
-        self.setup()
-
     def setup(self):
         t0 = time()
         self.sensors_setup = False
         self.is_connected = False # TODO: This should be calling a ble_adapter method to check
-        try:
-            self.ble_adapter = self._ble_adapter_cls(self.mac_address)
-            with time_limit(5):
-                self.power.wake()
-                if not STABILIZE_SPHEROS: 
-                    # This is silently broken, not sure why TODO
-                    rospy.loginfo("Disabling sphero control system.")
-                    self.driving.set_stabilization(StabilizationIndex.no_control_system)
-                r,g,b = Sphero_RGB_Color[self.name]
-                # self.user_io.set_all_leds_8_bit_mask(front_color=Color(r//10, g//10, b//10), back_color=Color(0,0,0)) #Color(r,g,b))
-                self.user_io.set_all_leds_8_bit_mask(front_color=Color(WHITE_RGB[0]//20, WHITE_RGB[1]//20, WHITE_RGB[2]//20), back_color=Color(0,0,0)) #Color(r,g,b))
-                print(f"{self.name} Setting matrix to: {r},{g},{b}")
-                # self.user_io.set_led_matrix_one_color(Color(*WHITE_RGB))
-                self.user_io.set_led_matrix_one_color(Color(r, g, b))
+        while (not self.is_connected) and (self.n_tries < 2):
+            try:
+                self.ble_adapter = self._ble_adapter_cls(self.mac_address)
+                with time_limit(5):
+                    self.power.wake()
+                    r,g,b = Sphero_RGB_Color[self.name]
+                    rospy.sleep(0.25)
+                    # self.user_io.set_all_leds_8_bit_mask(front_color=Color(r//10, g//10, b//10), back_color=Color(0,0,0)) #Color(r,g,b))
+                    self.user_io.set_all_leds_8_bit_mask(front_color=Color(WHITE_RGB[0]//20, WHITE_RGB[1]//20, WHITE_RGB[2]//20), back_color=Color(0,0,0)) #Color(r,g,b))
+                    print(f"{self.name} Setting matrix to: {r},{g},{b}")
+                    # self.user_io.set_led_matrix_one_color(Color(*WHITE_RGB))
+                    rospy.sleep(0.25)
+                    self.user_io.set_led_matrix_one_color(Color(r, g, b))
 
-            rospy.loginfo(f"{self.name} connected.")
-            self.is_connected = True
-        except Exception as e:
-            self.n_tries += 1
-            if (e is TimeoutException):
-                rospy.loginfo(f"{self.name} timed out during setup.")
-            else:
-                # traceback.print_exc()
-                rospy.loginfo(f"{self.name} failed to connect.")
-            raise e
+                rospy.loginfo(f"{self.name} connected.")
+                self.is_connected = True
+                rospy.sleep(0.25)
+                self.init_sensor_read()
+                rospy.sleep(0.25)
+            except Exception as e:
+                if (e is TimeoutException):
+                    rospy.loginfo(f"{self.name} connect attempt {self.n_tries} timed out during setup.")
+                else:
+                    # traceback.print_exc()
+                    rospy.loginfo(f"{self.name} connect attempt {self.n_tries} failed to connect.")
+                self.n_tries += 1
+                self.ble_adapter = None
+                # raise e
+        return self.is_connected
         
     
     def init_sensor_read(self):
         if not (SENSOR_READ): return # don't care about sensors 
         with time_limit(1):
             try:
-                self.sensor.set_notify(self.sensor_bt_cb, *ACTIVE_SENSORS)
-                self.sensors_setup = True  
+                self.sensor.set_notify(self.sensor_bt_cb, CoreTime, Quaternion, interval=100)
+                self.sensors_setup = True 
+                rospy.loginfo(f"Sensors initialized for {self.name}") 
             except TimeoutException as e:
                 self.sensors_setup = False
                 rospy.loginfo(f"{self.name} sensor init timed out.")
@@ -151,8 +152,11 @@ class WrappedSphero(Sphero):
         self.cmd.v = min(100, max(self.cmd.v, -100))
         self.cmd.theta = min(360, max(self.cmd.theta, 0)) # todo: correct for wrap
 
-        self.cmd_echo_pub.publish(self.cmd)
-        self.driving.drive_with_heading(int(self.cmd.v), int(self.cmd.theta), Direction.forward)
+        # self.cmd_echo_pub.publish(self.cmd)
+        # try:
+        #     self.driving.drive_with_heading(int(self.cmd.v), int(self.cmd.theta), Direction.forward)
+        # except Exception as e:
+        #     rospy.loginfo(f"Failed drive_with_heading for {self.name}")
 
     def color_cb(self, color_request):
         rospy.loginfo("Setting color to "+str(color_request))
@@ -196,7 +200,7 @@ class WrappedSphero(Sphero):
 
         # cap inputs
         t, v, theta = self.cmd.t, self.cmd.v, self.cmd.theta
-        if (time() - t > 3.0):
+        if (time() - t > 3.0): 
             self.cmd = HeadingStamped()
             if (v > 0):
                 self.cmd.v = 0
@@ -209,12 +213,14 @@ class WrappedSphero(Sphero):
 
         try:
             with time_limit(1):
-                self.light_pub.publish(self.sensor.get_ambient_light_sensor_value())
+                # self.light_pub.publish(self.sensor.get_ambient_light_sensor_value())
                 if (self.cmd.v == 0): # make sure 0s get through
                     self.cmd_echo_pub.publish(HeadingStamped(rospy.get_time(), v, theta))
                     self.driving.drive_with_heading(int(v), int(theta), Direction.forward)
         except TimeoutException as e:
-            rospy.loginfo(f"{self.name} timed out on step.")
+            rospy.loginfo(f"{self.name} timed out on step. {e.with_traceback()}")
+        # except Exception as e:
+        #     rospy.logerr(f"{self.name} exception on step: {e.with_traceback()}")
 
 def main():
     rospy.loginfo("Starting sphero interface node")
@@ -228,13 +234,12 @@ def main():
     connected_sphero_names = set()
     for ma in spheros.keys():
         rospy.loginfo("Waking up sphero "+ma)
-        try:
-            sphero = WrappedSphero(mac_address=ma.lower())
+        sphero = WrappedSphero(mac_address=ma.lower())
+        if (sphero.setup()):
             spheros[ma] = sphero
             connected_sphero_names.add(sphero.name)
-        except Exception as e:
-            print(f"WARN: Could not connect to sphero {ma}: {e}")
-            traceback.print_exc()
+        else:
+            rospy.loginfo(f"Gave up on sphero {ma}")
 
     update_names = True
     while not rospy.is_shutdown():

@@ -446,6 +446,7 @@ def main():
                 # theta = (theta_imu + theta_cmded) / 2.
                 theta = theta_imu
                 I.set_detected_position(cx, cy, theta)
+                cv2.line(image, (cx,cy), (int(cx+15*np.cos(theta)), int(cy-15*np.sin(theta))), (255,255,255), 2)
             else: # Set heading based on raw untracked vision
                 # print(f"{color_string}")
                 mask0 = np.zeros((height,width), np.uint8)
@@ -493,8 +494,9 @@ def main():
                     elif (len(I.initial_heading_samples) > 30): # Edge case where initial readings are wrong and we get a hug variance that will take a million years to drop
                         I.initial_heading_samples = []
                     else:
-                        rospy.loginfo(f"Not enough samples to set initial heading for {I.sphero_id}")
-                        if theta: rospy.loginfo(f"{I.sphero_id} n {len(I.initial_heading_samples)} {np.std(I.initial_heading_samples):1.2f} theta {theta:1.2f}")
+                        pass
+                        # rospy.loginfo(f"Not enough samples to set initial heading for {I.sphero_id}")
+                        # if theta: rospy.loginfo(f"{I.sphero_id} n {len(I.initial_heading_samples)} {np.std(I.initial_heading_samples):1.2f} theta {theta:1.2f}")
                 else:
                     if (rospy.get_time() - I.last_detected_color_ts < 0.2):
                         # I.raw_pose_pub.publish(Pose2D(x, y, offset_theta))
@@ -508,6 +510,8 @@ def main():
                     if I.initial_imu_heading_samples.__len__() >= 10:
                         I.initial_imu_heading = np.mean(I.initial_imu_heading_samples)
                         rospy.loginfo(f"{I.sphero_id} initial imu {I.initial_imu_heading:1.1f}")
+                else:
+                    print(f"No IMU data from {I.sphero_id}")
 
 
         if (ekf_pose2d):
