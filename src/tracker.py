@@ -59,9 +59,10 @@ def time_limit(seconds):
         signal.alarm(0)
 
 CHECK_FOR_UPDATED_PARAMS = True
-VIDEO_DIM = (1020, 540)
+VIDEO_DIM = (1020, 540) # TODO: This should be published
 USE_TRACKERS = False # CV2 trackers hang on init for an unknown reason
-INTERACTION_ZONE = (VIDEO_DIM[0]//2, VIDEO_DIM[1])
+INTERACTION_ZONE = (rospy.get_param("/param_server/x_interaction_zone", default=470), rospy.get_param("/param_server/y_interaction_zone", default=80))
+
 
 
 global EXPECTED_SPHERO_RADIUS, MIN_CONTOUR_AREA, MAX_CONTOUR_AREA, POSITION_COVARIANCE, ORIENTATION_COVARIANCE, FWD_H_RANGE, FWD_S_RANGE, FWD_V_RANGE, VERBOSE, SHOW_IMAGES, LOWER_THRESHOLD, UPPER_THRESHOLD, NINE_SHARPEN_KERNEL, BLUR_KERNEL_SIZE, MORPH_RECT_SIZE
@@ -122,6 +123,7 @@ class VisionDetect:
 
         self.goal = None
         self.goal_sub = rospy.Subscriber(f"/{self.sphero_id}/goal", PositionGoal, goal_cb) # this should be in rviz probably
+        self.priority_goal_sub = rospy.Subscriber(f"/priority_goal", PositionGoal, pgoal_cb) # this should be in rviz probably
         self.cmd_sub = rospy.Subscriber(f"/{self.sphero_id}/echo_cmd", HeadingStamped, cmd_cb, callback_args=self.sphero_id)
         # self.ekf_sub = rospy.Subscriber(f"/{self.sphero_id}_ekf/odom_combined", PoseWithCovarianceStamped, self.ekf_cb, callback_args=self.sphero_id)
         # self.odom_sub = rospy.Subscriber(f"/{self.sphero_id}/odom", Odometry, self.odom_cb, callback_args=self.sphero_id)
@@ -224,9 +226,6 @@ class VisionDetect:
         else: 
             return False
 
-    def goal_callback(self, msg):
-        self.goal = msg
-
 def mouse_cb(event, x, y, flags, params):
     # checking for right mouse clicks
     imagek = frame_hsv.copy()
@@ -243,6 +242,8 @@ def pose_cb(data, sphero_id):
 
 goal_pose2d = dict()
 def goal_cb(position_goal: HeadingStamped):
+    goal_pose2d[position_goal.sphero_name] = position_goal.goal
+def pgoal_cb(position_goal: HeadingStamped): # priority goals have the spheros names 
     goal_pose2d[position_goal.sphero_name] = position_goal.goal
 
 last_issued_cmds = dict()

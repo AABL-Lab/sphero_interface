@@ -11,25 +11,30 @@ import time, math, random
 
 from numpy import rad2deg, exp
 from IPython import embed
+from torch import rand
 
-import rospy, rosparam
+import rospy
+import numpy as np
 from rospy import Subscriber
-from std_msgs.msg import Float32
+from std_msgs.msg import Bool
 from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped
 from sphero_interface.msg import HeadingStamped, SpheroNames, PositionGoal
 from tf.transformations import euler_from_quaternion
 
 import utils
 
-VERBOSE = False
+VERBOSE = True
 
-UPDATE_PERIOD = 0.1 # seconds for control loop
-MIN_SPEED = 10
+UPDATE_PERIOD = 0.2 # seconds for control loop
+MIN_SPEED = 15
 MAX_SPEED = 30
-GOAL_THRESHOLD = 2 * rospy.get_param("/param_server/expected_sphero_radius", default=30) # How far we can be from a goal before its considered achieved
+GOAL_THRESHOLD = 3 * rospy.get_param("/param_server/expected_sphero_radius", default=30) # How far we can be from a goal before its considered achieved
 SLOWDOWN_DISTANCE = 5 * GOAL_THRESHOLD
 TEST_SQUARE_LEN = 200
 LOOP_TRAJECTORY = False
+
+# keep some history
+MAX_HISTORY_LENGTH = 20
 
 '''
 Parent class that handles all subscribers and publishers
@@ -45,12 +50,15 @@ class TrajectoryFollowerGroup():
         self.initial_heading_subscribers = dict()
 
         self.initial_headings = dict()
-        self.sphero_poses = dict()
-        self.pose_ts = dict()
         self.goal_poses = dict()
         self.priority_goal_poses = dict()
 
-        # self.goal_pub = rospy.Publisher(sphero_id+"/goal", Pose2D, queue_size=1)
+        # keep a short history of poses se 
+        self.sphero_poses = dict()
+        self.pose_ts = dict()
+
+        self.task_complete_pub = rospy.Publisher("/task_complete", Bool, queue_size=1, latch=True)
+        self.task_complete = False
 
     def sphero_names_cb(self, msg: SpheroNames):
         '''
@@ -67,8 +75,16 @@ class TrajectoryFollowerGroup():
                 self.initial_heading_subscribers[name] = rospy.Subscriber(name+"/initial_heading", HeadingStamped, self.initial_heading_callback, callback_args=name)
 
     def pose_callback(self, msg, name):
-        self.sphero_poses[name] = msg
-        self.pose_ts[name] = time.time()
+        if name not in self.sphero_poses.keys():
+            self.sphero_poses[name] = [msg]
+            self.pose_ts[name] = [time.time()]
+        else:
+            self.sphero_poses[name].append(msg)
+            self.pose_ts[name].append(time.time())
+
+        if len(self.sphero_poses[name]) > MAX_HISTORY_LENGTH:
+            self.sphero_poses[name].pop(0)
+            self.pose_ts[name].pop(0)
 
     def goal_callback(self, msg, name): self.goal_poses[name] = msg.goal # TODO: this should either have name as a callback arg or use the name in the messages, not both
     
@@ -86,11 +102,15 @@ class TrajectoryFollowerGroup():
                 rospy.logwarn("PRIORITY Goal, but no initial heading for " + name)
                 continue
 
-            if (time.time() - self.pose_ts[name]) > 0.5: # late pose send stop
+            if (time.time() - self.pose_ts[name][-1]) > 0.5: # late pose send stop
                 rospy.logwarn("Stale pose data sending zero for " + name)
                 cmd = HeadingStamped()
             else:
                 cmd = self.cmd_for(name, priority_goal)
+                if cmd.v == 0 and cmd.theta == 0: # we completed the priority goal HACK: send out a task complete signal
+                    self.task_complete_pub.publish(True)
+                    self.task_complete = True
+
             self.cmd_publishers[name].publish(cmd)
         
         for name, goal in self.goal_poses.items():
@@ -104,7 +124,7 @@ class TrajectoryFollowerGroup():
                 # Ignore goals for spheros that have priority goals
                 continue
 
-            if (time.time() - self.pose_ts[name]) > 0.5: # late pose send stop
+            if (time.time() - self.pose_ts[name][-1]) > 0.5: # late pose send stop
                 rospy.logwarn("Stale pose data sending zero for " + name)
                 cmd = HeadingStamped()
             else:
@@ -121,9 +141,13 @@ class TrajectoryFollowerGroup():
         else:
             return max(MIN_SPEED, MAX_SPEED * exp(- (SLOWDOWN_DISTANCE - distance_from_goal) / 50))
 
+    def stuck_sphero(self, name):
+        xvar, yvar = np.var([entry.x for entry in self.sphero_poses[name]]), np.var([entry.y for entry in self.sphero_poses[name]])
+        return xvar < 5 and yvar < 5
+
     def cmd_for(self, name: string, goal_pose: Pose2D):
         cmd = HeadingStamped()
-        curr_pose = self.sphero_poses[name]
+        curr_pose = self.sphero_poses[name][-1]
         initial_heading = self.initial_headings[name]
         distance_to_goal = utils.pose2d_distance(curr_pose, goal_pose)
         if (distance_to_goal < GOAL_THRESHOLD):
@@ -140,12 +164,19 @@ class TrajectoryFollowerGroup():
             # if VERBOSE: rospy.loginfo(f"dtheta_world {diff_theta:1.1f} from goal. dtheta_local {diff_theta_local:1.1f} from goal. th0 {initial_heading:1.1f}")
 
             adjusted_theta_goal = theta_goal - initial_heading
-            if VERBOSE: rospy.loginfo(f"target {theta_goal:1.1f} adjusted {adjusted_theta_goal:1.1f}. th0 {initial_heading:1.1f} distance_to_goal {distance_to_goal:1.2f}")
+            # if VERBOSE: rospy.loginfo(f"target {theta_goal:1.1f} adjusted {adjusted_theta_goal:1.1f}. th0 {initial_heading:1.1f} distance_to_goal {distance_to_goal:1.2f}")
 
             cmd.v = self.distance_to_speed(distance_to_goal) if abs(diff_theta_world) < (math.pi / 3.) else 0 # Only move forward if we're mostly aligned with the goal
             cmd.theta = rad2deg(utils.cap_0_to_2pi(2*math.pi - adjusted_theta_goal)) # NOTE: The sphero treats clockwise as positive theta and counterclockwise as negative theta, so we're flipping it here so we can use a standard approach
-            if VERBOSE: rospy.loginfo(f"current x:{curr_pose.x:1.1f} y:{curr_pose.y:1.1f} theta:{curr_pose.theta:1.1f} goal {goal_pose.x:1.1f} {goal_pose.y:1.1f} {goal_pose.theta:1.1f} cmd {cmd.v:1.1f} {cmd.theta:1.1f} diff_theta_world {diff_theta_world:1.1f}")
+            
+            # if VERBOSE: rospy.loginfo(f"current x:{curr_pose.x:1.1f} y:{curr_pose.y:1.1f} theta:{curr_pose.theta:1.1f} goal {goal_pose.x:1.1f} {goal_pose.y:1.1f} {goal_pose.theta:1.1f} cmd {cmd.v:1.1f} {cmd.theta:1.1f} diff_theta_world {diff_theta_world:1.1f}")
         
+            ## If we've been stuck for a while (on another sphero probably), alter the theta by 45 degrees for at least a step
+            if self.stuck_sphero(name):
+                # if VERBOSE: rospy.loginfo(f"{name} is stuck! Perturbing theta cmd.")
+                cmd.theta += random.randint(-60, 60)
+                cmd.theta = utils.cap_0_to_360(cmd.theta)
+
         return cmd
 
 '''
@@ -155,9 +186,11 @@ def main():
     rospy.init_node("trajectory_follower")
     trajectory_follower_group = TrajectoryFollowerGroup()
     rospy.loginfo("Looping...")
-    while not (rospy.is_shutdown()):
+    while not (rospy.is_shutdown()) and not trajectory_follower_group.task_complete:
         trajectory_follower_group.update()
         time.sleep(UPDATE_PERIOD)
+
+    rospy.loginfo("Shutting down trajectory follower...")
 
 
 if __name__ == "__main__":

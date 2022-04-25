@@ -4,15 +4,15 @@ dictitems:
   blue_s: 200
   blue_v: 251
   blur_kernel_size: 3
-  expected_sphero_radius: 16
+  expected_sphero_radius: 20
   fwd_hue_max: 255
   fwd_hue_min: 0
   fwd_sat_max: 255
   fwd_sat_min: 0
   fwd_val_max: 255
   fwd_val_min: 220
-  green_h: 78
-  green_s: 215
+  green_h: 80
+  green_s: 135
   green_v: 200
   groups: !!python/object/new:dynamic_reconfigure.encoding.Config
     dictitems:
@@ -20,24 +20,24 @@ dictitems:
       blue_s: 200
       blue_v: 251
       blur_kernel_size: 3
-      expected_sphero_radius: 16
+      expected_sphero_radius: 20
       fwd_hue_max: 255
       fwd_hue_min: 0
       fwd_sat_max: 255
       fwd_sat_min: 0
       fwd_val_max: 255
       fwd_val_min: 220
-      green_h: 78
-      green_s: 215
+      green_h: 80
+      green_s: 135
       green_v: 200
       groups: !!python/object/new:dynamic_reconfigure.encoding.Config
         state: []
-      hue_max: 15
-      hue_min: 15
+      hue_max: 10
+      hue_min: 10
       id: 0
       lower_threshold: 233
-      max_contour_area: 300
-      min_contour_area: 50
+      max_contour_area: 800
+      min_contour_area: 150
       morph_rect_size: 3
       name: Default
       nine_sharpen_kernel: true
@@ -47,11 +47,11 @@ dictitems:
       parent: 0
       position_covariance: 3.0
       red_h: 175
-      red_s: 237
+      red_s: 250
       red_v: 233
-      sat_max: 15
-      sat_min: 15
-      show_pipeline: true
+      sat_max: 50
+      sat_min: 50
+      show_pipeline: false
       state: true
       type: ''
       upper_threshold: 255
@@ -59,21 +59,21 @@ dictitems:
       val_min: 50
       verbose: true
     state: []
-  hue_max: 15
-  hue_min: 15
+  hue_max: 10
+  hue_min: 10
   lower_threshold: 233
-  max_contour_area: 300
-  min_contour_area: 50
+  max_contour_area: 800
+  min_contour_area: 150
   morph_rect_size: 3
   nine_sharpen_kernel: true
   orientation_covariance: 0.1
   position_covariance: 3.0
   red_h: 175
-  red_s: 237
+  red_s: 250
   red_v: 233
-  sat_max: 15
-  sat_min: 15
-  show_pipeline: true
+  sat_max: 50
+  sat_min: 50
+  show_pipeline: false
   upper_threshold: 255
   val_max: 50
   val_min: 50

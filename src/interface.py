@@ -153,10 +153,11 @@ class WrappedSphero(Sphero):
         self.cmd.theta = min(360, max(self.cmd.theta, 0)) # todo: correct for wrap
 
         # self.cmd_echo_pub.publish(self.cmd)
-        # try:
-        #     self.driving.drive_with_heading(int(self.cmd.v), int(self.cmd.theta), Direction.forward)
-        # except Exception as e:
-        #     rospy.loginfo(f"Failed drive_with_heading for {self.name}")
+        try:
+            self.driving.drive_with_heading(int(self.cmd.v), int(self.cmd.theta), Direction.forward)
+            rospy.loginfo(f"{self.name} sent command: {self.cmd.v:1.2f} {self.cmd.theta:1.2f}")
+        except Exception as e:
+            rospy.loginfo(f"Failed drive_with_heading for {self.name}")
 
     def color_cb(self, color_request):
         rospy.loginfo("Setting color to "+str(color_request))
@@ -208,8 +209,6 @@ class WrappedSphero(Sphero):
             if (theta > 0 and "/tracker" not in rosnode.get_node_names()):
                 self.cmd.theta = 0
                 rospy.loginfo("No tracker so forcing theta to 0")
-        else:
-            rospy.loginfo(f"{self.name} sending command: {v:1.2f} {theta:1.2f}")
 
         try:
             with time_limit(1):
@@ -218,7 +217,7 @@ class WrappedSphero(Sphero):
                     self.cmd_echo_pub.publish(HeadingStamped(rospy.get_time(), v, theta))
                     self.driving.drive_with_heading(int(v), int(theta), Direction.forward)
         except TimeoutException as e:
-            rospy.loginfo(f"{self.name} timed out on step. {e.with_traceback()}")
+            rospy.loginfo(f"{self.name} timed out on step.")
         # except Exception as e:
         #     rospy.logerr(f"{self.name} exception on step: {e.with_traceback()}")
 
