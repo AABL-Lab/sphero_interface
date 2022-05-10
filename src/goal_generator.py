@@ -42,9 +42,9 @@ if PRECOMPUTE_GOALS:
                 precomputed_goals.append(Pose2D(x, y, 0))
 
 # Show the valid goals
-import matplotlib.pyplot as plt
-plt.scatter([pt.x for pt in precomputed_goals], [pt.y for pt in precomputed_goals])
-plt.show()
+# import matplotlib.pyplot as plt
+# plt.scatter([pt.x for pt in precomputed_goals], [pt.y for pt in precomputed_goals])
+# plt.show()
 
 
 def select_random_goal():

@@ -1,5 +1,5 @@
 <launch>
-    <!-- <node name="param_server" pkg="sphero_interface" type="param_server.py"/> -->
+    <node name="param_server" pkg="sphero_interface" type="param_server.py" output="screen"/>
+    <node name="interface" pkg="sphero_interface" type="interface.py" output="screen"/>
     <node name="tracker" pkg="sphero_interface" type="tracker.py" output="screen"/>
-    <include file="$(find sphero_interface)/launch/ekf_only.launch" />
 </launch>
