@@ -1,5 +1,5 @@
-rosbag record -o data --duration=1h -a -x "(.*)epth(.*)||(.*)joy(.*)||(.*)image_tf(.*)||(.*)compressed(.*)||(.*)/rgb/(.*)||(.*)/ir/(.*)||/points2||/body_index_map(.*)" 
-rosbag record -o video --duration=1h -e "/rgb_to_depth/image_raw/compressed(.*)||/depth/image_raw/compressed(.*)"
+rosbag record -o data --split --duration=1h -a -x "(.*)epth(.*)||(.*)joy(.*)||(.*)image_tf(.*)||(.*)compressed(.*)||(.*)/rgb/(.*)||(.*)/ir/(.*)||/points2||/body_index_map(.*)" 
+rosbag record -o video --split --duration=1h -e "/rgb_to_depth/image_raw/compressed(.*)||/depth/image_raw/compressed(.*)" -x "(.*)compressedDepth(.*)"
 
 v4l2-ctl --set-ctrl saturation=120
 v4l2-ctl -d /dev/video0 --set-ctrl=focus_auto=0
