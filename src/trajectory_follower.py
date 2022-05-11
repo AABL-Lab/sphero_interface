@@ -23,7 +23,7 @@ from tf.transformations import euler_from_quaternion
 
 import utils
 
-VERBOSE = True
+VERBOSE = False
 
 UPDATE_PERIOD = 0.2 # seconds for control loop
 MIN_SPEED = 15
@@ -60,7 +60,7 @@ class TrajectoryFollowerGroup():
         self.pose_ts = dict()
 
         self.task_complete_pub = rospy.Publisher("/task_complete", Bool, queue_size=1, latch=True)
-        self.task_complete = False
+        self.task_complete = True
 
     def sphero_names_cb(self, msg: SpheroNames):
         '''
@@ -95,12 +95,18 @@ class TrajectoryFollowerGroup():
     
     def initial_heading_callback(self, msg, name): self.initial_headings[name] = msg.theta
 
-    def reset_state(msg):
-        rospy.loginfo("Resetting Trajectory Follower State")
+    def reset_state(self, msg):
+        rospy.loginfo("TrajFollower: Resetting State.")
         self.priority_goal_poses = dict()
         self.goal_poses = dict()
+        self.task_complete = False
 
     def update(self):
+        if (self.task_complete):
+            rospy.loginfo("Task complete. Skipping update.")
+            rospy.sleep(0.5)
+            return
+
         for name, priority_goal in self.priority_goal_poses.items():
             if name not in self.sphero_poses: 
                 rospy.logwarn("PRIORITY Goal, but no pose for " + name)
@@ -181,7 +187,7 @@ class TrajectoryFollowerGroup():
             ## If we've been stuck for a while (on another sphero probably), alter the theta by 45 degrees for at least a step
             if self.stuck_sphero(name):
                 # if VERBOSE: rospy.loginfo(f"{name} is stuck! Perturbing theta cmd.")
-                cmd.theta += random.randint(-60, 60)
+                cmd.theta += random.randint(-75, 75)
                 cmd.theta = utils.cap_0_to_360(cmd.theta)
 
         return cmd
@@ -193,7 +199,7 @@ def main():
     rospy.init_node("trajectory_follower")
     trajectory_follower_group = TrajectoryFollowerGroup()
     rospy.loginfo("Looping...")
-    while not (rospy.is_shutdown()) and not trajectory_follower_group.task_complete:
+    while not (rospy.is_shutdown()):
         trajectory_follower_group.update()
         time.sleep(UPDATE_PERIOD)
 

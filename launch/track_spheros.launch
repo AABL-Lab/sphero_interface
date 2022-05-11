@@ -2,4 +2,7 @@
     <node name="param_server" pkg="sphero_interface" type="param_server.py" output="screen"/>
     <node name="interface" pkg="sphero_interface" type="interface.py" output="screen"/>
     <node name="tracker" pkg="sphero_interface" type="tracker.py" output="screen"/>
+    
+    <!-- <node pkg="audio_capture" name="audio_capture" type="capture"/> -->
+    <include file="$(find audio_capture)/launch/capture.launch"/>
 </launch>

@@ -11,7 +11,7 @@ from pyrfc3339 import generate
 import rospy
 import random
 import utils
-from std_msgs.msg import Float32
+from std_msgs.msg import Bool
 from geometry_msgs.msg import Pose2D
 from sphero_interface.msg import SpheroNames, PositionGoal
 from geometry_msgs.msg import Pose2D
@@ -59,7 +59,13 @@ def main():
     rospy.init_node("goal_generator")
     rospy.sleep(1.0)
     rospy.loginfo("looping..")
-    rospy.Subscriber("/sphero_names", SpheroNames, sphero_names_cb)
+
+    rospy.Subscriber("/start", Bool, reset_cb)
+    rospy.Subscriber("/reset_experiment", Bool, reset_cb)
+
+    spheronames = rospy.wait_for_message("/sphero_names", SpheroNames)
+    sphero_names_cb(spheronames)
+    # rospy.Subscriber("/sphero_names", SpheroNames, sphero_names_cb)
     while not rospy.is_shutdown(): # do work
         goals = [entry for entry in deepcopy(list(active_goals.values())) if entry is not None]
         for k,v in active_goals.items():
@@ -104,6 +110,11 @@ def sphero_names_cb(msg: SpheroNames):
             goal_publishers[name] = rospy.Publisher(name+"/goal", PositionGoal, queue_size=1)
             pose_subscribers[name] = rospy.Subscriber(name+"/pose", Pose2D, pose_cb, callback_args=name)
 
+def reset_cb(msg):
+    rospy.loginfo("GM: Resetting.")
+    rospy.sleep(0.5)
+    for key in active_goals.keys():
+        active_goals[key] = None
 
 def pose_cb(msg: Pose2D, name: str):
     '''
