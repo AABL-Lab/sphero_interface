@@ -59,7 +59,7 @@ class TrajectoryFollowerGroup():
         self.sphero_poses = dict()
         self.pose_ts = dict()
 
-        self.task_complete_pub = rospy.Publisher("/task_complete", Bool, queue_size=1, latch=True)
+        self.task_complete_pub = rospy.Publisher("/task_complete", Bool, queue_size=1)
         self.task_complete = True
 
     def sphero_names_cb(self, msg: SpheroNames):
