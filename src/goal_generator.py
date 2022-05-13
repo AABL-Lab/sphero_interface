@@ -18,7 +18,7 @@ from geometry_msgs.msg import Pose2D
 from copy import deepcopy
 import numpy as np
 
-w_range = (rospy.get_param("/tracker_params/min_width", 150.), rospy.get_param("/tracker_params/max_width", 800.))
+w_range = (rospy.get_param("/tracker_params/min_width", 125.), rospy.get_param("/tracker_params/max_width", 825.))
 h_range = (rospy.get_param("/tracker_params/min_height", 75.), rospy.get_param("/tracker_params/max_height", 450))
 GOAL_THRESHOLD = 3 * rospy.get_param("/param_server/expected_sphero_radius", default=30) # How far we can be from a goal before its considered achieved
 PRESET_GOALS = {} #{"sd1": [(350, 200), (750, 200)]}
@@ -33,7 +33,7 @@ INTERACTION_ZONE = (rospy.get_param("/param_server/x_interaction_zone", default=
 PRECOMPUTE_GOALS = True
 precomputed_goals = []
 if PRECOMPUTE_GOALS:
-    MIN_DISTANCE_TO_IZ = rospy.get_param("/param_server/min_distance_to_iz", default=80)
+    MIN_DISTANCE_TO_IZ = rospy.get_param("/param_server/min_distance_to_iz", default=100)
     xres, yres = 40, 40 # x and y resolutions of random goals, the total number of goals will be < xres * yres because we're not using an goals within a radius of the interaction zone 
     for x in np.linspace(w_range[0], w_range[1], xres):
         for y in np.linspace(h_range[0], h_range[1], yres):
